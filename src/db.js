@@ -1,0 +1,218 @@
+const fs = require('fs');
+const path = require('path');
+const Database = require('better-sqlite3');
+
+// Determine DB path
+const DB_PATH = process.env.DB_PATH || path.join(process.cwd(), 'jobs.db');
+
+// Ensure directory exists
+const dir = path.dirname(DB_PATH);
+if (!fs.existsSync(dir)) {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('Could not create DB directory:', dir, e.message);
+  }
+}
+
+const db = new Database(DB_PATH);
+
+// Pragmas for better reliability in single-process usage
+db.pragma('journal_mode = WAL');
+db.pragma('synchronous = NORMAL');
+
+// Detect existing schema and migrate if needed, then ensure target schema exists
+function getCurrentColumns() {
+  try {
+    const rows = db.prepare("PRAGMA table_info('jobs')").all();
+    return rows.map((r) => r.name);
+  } catch (_e) {
+    return [];
+  }
+}
+
+function ensureTargetSchema() {
+  // Target schema requested by user:
+  // jobs(uuid TEXT PRIMARY KEY, status TEXT NOT NULL, progress REAL NOT NULL,
+  //      request TEXT NOT NULL, result TEXT, error TEXT, webhookUrl TEXT, webhookKey TEXT)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS jobs (
+      uuid TEXT PRIMARY KEY,
+      status TEXT NOT NULL,
+      progress REAL NOT NULL,
+      request TEXT NOT NULL,
+      result TEXT,
+      error TEXT,
+      webhookUrl TEXT,
+      webhookKey TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+  `);
+}
+
+function migrateIfLegacy() {
+  const cols = getCurrentColumns();
+  if (cols.length === 0) {
+    // No table — create fresh
+    ensureTargetSchema();
+    return;
+  }
+  const isLegacy = cols.includes('job_status') || cols.includes('params') || cols.includes('kind');
+  const isTarget = cols.includes('status') && cols.includes('request');
+  if (isTarget) {
+    // Already on target
+    ensureTargetSchema();
+    return;
+  }
+  if (!isLegacy) {
+    // Unknown schema — do not drop, but ensure indices for target if compatible
+    ensureTargetSchema();
+    return;
+  }
+
+  // Perform migration from legacy schema to target
+  const deserialize = (text, fallback) => {
+    if (text == null) return fallback;
+    try { return JSON.parse(text); } catch (_e) { return fallback; }
+  };
+
+  db.exec('BEGIN');
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS jobs_new (
+        uuid TEXT PRIMARY KEY,
+        status TEXT NOT NULL,
+        progress REAL NOT NULL,
+        request TEXT NOT NULL,
+        result TEXT,
+        error TEXT,
+        webhookUrl TEXT,
+        webhookKey TEXT
+      );
+    `);
+
+    const selectAll = db.prepare('SELECT * FROM jobs');
+    const insertNew = db.prepare(`
+      INSERT INTO jobs_new (uuid, status, progress, request, result, error, webhookUrl, webhookKey)
+      VALUES (@uuid, @status, @progress, @request, @result, @error, @webhookUrl, @webhookKey)
+    `);
+
+    for (const r of selectAll.iterate()) {
+      // Map legacy row to new row
+      const legacyParams = deserialize(r.params, {});
+      // Remove webhook fields from request body if present
+      const reqCopy = { ...legacyParams };
+      if (Object.prototype.hasOwnProperty.call(reqCopy, 'webhookUrl')) delete reqCopy.webhookUrl;
+      if (Object.prototype.hasOwnProperty.call(reqCopy, 'webhookKey')) delete reqCopy.webhookKey;
+
+      const images = deserialize(r.images, []);
+      const resultObj = { images };
+      if (r.info != null) resultObj.info = r.info;
+
+      const row = {
+        uuid: r.uuid,
+        status: r.job_status,
+        progress: Number(r.progress || 0),
+        request: JSON.stringify(reqCopy || {}),
+        result: JSON.stringify(resultObj),
+        error: r.job_status === 'error' ? (r.info || null) : null,
+        webhookUrl: r.webhookUrl ?? null,
+        webhookKey: r.webhookKey ?? null,
+      };
+      insertNew.run(row);
+    }
+
+    db.exec('DROP TABLE jobs');
+    db.exec('ALTER TABLE jobs_new RENAME TO jobs');
+    db.exec('CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status)');
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    // eslint-disable-next-line no-console
+    console.error('Migration to target schema failed:', e.message);
+    throw e;
+  }
+}
+
+migrateIfLegacy();
+ensureTargetSchema();
+
+// Helpers to (de)serialize JSON fields
+function serialize(val) {
+  return JSON.stringify(val == null ? null : val);
+}
+function deserialize(text, fallback) {
+  if (text == null) return fallback;
+  try {
+    return JSON.parse(text);
+  } catch (_e) {
+    return fallback;
+  }
+}
+
+const insertJobStmt = db.prepare(`
+  INSERT INTO jobs (uuid, status, progress, request, result, error, webhookUrl, webhookKey)
+  VALUES (@uuid, @status, @progress, @request, @result, @error, @webhookUrl, @webhookKey)
+`);
+
+const listSummariesStmt = db.prepare(`
+  SELECT uuid, status, progress FROM jobs ORDER BY rowid DESC
+`);
+
+const getJobStmt = db.prepare(`
+  SELECT * FROM jobs WHERE uuid = ?
+`);
+
+const updateStatusStmt = db.prepare(`
+  UPDATE jobs SET status = @status WHERE uuid = @uuid
+`);
+
+module.exports = {
+  // job: { uuid, status, progress, request(obj), result(obj|null), error(string|null), webhookUrl, webhookKey }
+  createJob(job) {
+    const row = {
+      uuid: job.uuid,
+      status: job.status,
+      progress: Number(job.progress || 0),
+      request: serialize(job.request || {}),
+      result: job.result == null ? null : serialize(job.result),
+      error: job.error ?? null,
+      webhookUrl: job.webhookUrl ?? null,
+      webhookKey: job.webhookKey ?? null,
+    };
+    insertJobStmt.run(row);
+    return job.uuid;
+  },
+
+  listJobsSummary() {
+    return listSummariesStmt.all().map((r) => ({
+      uuid: r.uuid,
+      status: r.status,
+      progress: Number(r.progress || 0),
+    }));
+  },
+
+  getJob(uuid) {
+    const r = getJobStmt.get(uuid);
+    if (!r) return null;
+    return {
+      uuid: r.uuid,
+      status: r.status,
+      progress: Number(r.progress || 0),
+      request: deserialize(r.request, {}),
+      result: deserialize(r.result, null),
+      error: r.error ?? null,
+      webhookUrl: r.webhookUrl ?? null,
+      webhookKey: r.webhookKey ?? null,
+    };
+  },
+
+  cancelJob(uuid) {
+    const job = this.getJob(uuid);
+    if (!job) return false;
+    if (job.status !== 'queued' && job.status !== 'processing') return false;
+    updateStatusStmt.run({ uuid, status: 'canceled' });
+    return true;
+  },
+};

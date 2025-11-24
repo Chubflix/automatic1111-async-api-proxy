@@ -9,3 +9,4 @@ docs/
 .nvmrc
 docker-compose.yml
 Dockerfile
+data/
