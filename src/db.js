@@ -215,4 +215,45 @@ module.exports = {
     updateStatusStmt.run({ uuid, status: 'canceled' });
     return true;
   },
+
+  // Atomically lease the next queued job and mark it processing. Returns full job or null.
+  leaseNextQueuedJob() {
+    let leased = null;
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const row = db.prepare("SELECT * FROM jobs WHERE status = 'queued' ORDER BY rowid ASC LIMIT 1").get();
+      if (row) {
+        db.prepare("UPDATE jobs SET status='processing' WHERE uuid = ?").run(row.uuid);
+        leased = {
+          uuid: row.uuid,
+          status: 'processing',
+          progress: Number(row.progress || 0),
+          request: deserialize(row.request, {}),
+          result: deserialize(row.result, null),
+          error: row.error ?? null,
+          webhookUrl: row.webhookUrl ?? null,
+          webhookKey: row.webhookKey ?? null,
+        };
+      }
+      db.exec('COMMIT');
+    } catch (e) {
+      db.exec('ROLLBACK');
+      throw e;
+    }
+    return leased;
+  },
+
+  setProgress(uuid, progress) {
+    const p = Math.max(0, Math.min(1, Number(progress) || 0));
+    db.prepare('UPDATE jobs SET progress=? WHERE uuid=?').run(p, uuid);
+  },
+
+  completeJob(uuid, resultObj) {
+    db.prepare("UPDATE jobs SET status='completed', progress=1, result=?, error=NULL WHERE uuid=?")
+      .run(serialize(resultObj || null), uuid);
+  },
+
+  failJob(uuid, message) {
+    db.prepare("UPDATE jobs SET status='error', error=? WHERE uuid=?").run(message || 'Unknown error', uuid);
+  },
 };
