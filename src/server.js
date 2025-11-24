@@ -157,10 +157,10 @@ api.get('/v1/sd-models', async (_req, res) => {
     if (!process.env.AUTOMATIC1111_API_BASE) return res.json({ models: [] });
     const models = await a1111.listSdModels();
     // Pass-through array as-is, but wrap to match our spec { models: [] }
-    return res.json({ models: Array.isArray(models) ? models : [] });
+    return res.json(Array.isArray(models) ? models : []);
   } catch (e) {
     // On error, degrade gracefully to empty list to keep API stable
-    return res.json({ models: [] });
+    return res.json([]);
   }
 });
 // Model detail placeholder
@@ -171,9 +171,9 @@ api.get('/v1/loras', async (_req, res) => {
   try {
     if (!process.env.AUTOMATIC1111_API_BASE) return res.json({ loras: [] });
     const loras = await a1111.listLoras();
-    return res.json({ loras: Array.isArray(loras) ? loras : [] });
+    return res.json(Array.isArray(loras) ? loras : []);
   } catch (_e) {
-    return res.json({ loras: [] });
+    return res.json([]);
   }
 });
 // LoRa detail placeholder
