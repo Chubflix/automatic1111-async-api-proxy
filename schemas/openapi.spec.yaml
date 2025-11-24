@@ -1,0 +1,275 @@
+openapi: 3.0.3
+info:
+  title: Async Automatic1111 Drop-in Replacement API with Civitai Metadata and Webhook Key
+  version: 1.5.0
+servers:
+  - url: https://your-server.com
+security:
+  - bearerAuth: []
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: "Token"
+  schemas:
+    JobUUIDResponse:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+    JobSummary:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        job_status:
+          type: string
+          enum:
+            - queued
+            - processing
+            - completed
+            - error
+            - canceled
+        progress:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 1
+    JobProgressResponse:
+      allOf:
+        - $ref: '#/components/schemas/JobSummary'
+        - type: object
+          properties:
+            images:
+              type: array
+              items:
+                type: string
+                description: Base64-encoded images (empty until complete)
+            info:
+              type: string
+              nullable: true
+              description: Additional info or error message
+    ModelListResponse:
+      type: object
+      properties:
+        models:
+          type: array
+          items:
+            allOf:
+              - type: object
+                properties:
+                  civitai:
+                    type: object
+                    nullable: true
+                    description: Additional Civitai metadata object
+    LoraListResponse:
+      type: object
+      properties:
+        loras:
+          type: array
+          items:
+            allOf:
+              - type: object
+                properties:
+                  civitai:
+                    type: object
+                    nullable: true
+                    description: Additional Civitai metadata object
+
+paths:
+  /sdapi/v1/txt2img:
+    post:
+      summary: Submit txt2img generation job (async)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: './automatic1111.spec.json#/components/schemas/StableDiffusionProcessingTxt2Img'
+                - type: object
+                  properties:
+                    webhookUrl:
+                      type: string
+                      format: uri
+                      nullable: true
+                      description: Optional webhook URL to receive job completion notification
+                    webhookKey:
+                      type: string
+                      nullable: true
+                      description: Optional secret key sent with webhook for authentication
+      responses:
+        '202':
+          description: Job accepted; returns job UUID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobUUIDResponse'
+
+  /sdapi/v1/img2img:
+    post:
+      summary: Submit img2img generation job (async)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: './automatic1111.spec.json#/components/schemas/StableDiffusionProcessingImg2Img'
+                - type: object
+                  properties:
+                    webhookUrl:
+                      type: string
+                      format: uri
+                      nullable: true
+                    webhookKey:
+                      type: string
+                      nullable: true
+      responses:
+        '202':
+          description: Job accepted; returns job UUID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobUUIDResponse'
+
+  /sdapi/v1/jobs:
+    get:
+      summary: List all jobs with progress summary
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of jobs and their progress
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/JobSummary'
+
+  /sdapi/v1/jobs/{uuid}:
+    get:
+      summary: Check detailed job progress and results
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: uuid
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Job progress data with images/base64 if completed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobProgressResponse'
+        '404':
+          description: Job not found
+
+    delete:
+      summary: Cancel a queued or running job by UUID
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: uuid
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Job cancelled successfully
+        '404':
+          description: Job not found or already completed
+
+  /sdapi/v1/sd-models:
+    get:
+      summary: Get list of available models/checkpoints
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of models with Civitai metadata if available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ModelListResponse'
+
+  /sdapi/v1/sd-models/{modelId}:
+    get:
+      summary: Get details about a specific model/checkpoint (with Civitai metadata)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: modelId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Model details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      civitai:
+                        type: object
+                        nullable: true
+                        description: Additional Civitai metadata object
+        '404':
+          description: Model not found
+
+  /sdapi/v1/loras:
+    get:
+      summary: Get list of available LoRas
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: List of LoRas with Civitai metadata if available
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoraListResponse'
+
+  /sdapi/v1/loras/{loraId}:
+    get:
+      summary: Get details about a specific LoRa (with Civitai metadata)
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: loraId
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: LoRa details
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - type: object
+                    properties:
+                      civitai:
+                        type: object
+                        nullable: true
+                        description: Additional Civitai metadata object
+        '404':
+          description: LoRa not found
