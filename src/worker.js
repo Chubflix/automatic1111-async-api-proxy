@@ -19,14 +19,16 @@ function chooseEndpoint(request) {
 }
 
 async function sendWebhook(job, payload) {
-  if (!job.webhookUrl) return;
+  if (!job.webhookUrl) return false;
   try {
     const headers = { 'content-type': 'application/json' };
     if (job.webhookKey) headers['x-webhook-key'] = job.webhookKey;
-    await fetch(job.webhookUrl, { method: 'POST', headers, body: JSON.stringify(payload) });
+    const resp = await fetch(job.webhookUrl, { method: 'POST', headers, body: JSON.stringify(payload) });
+    return !!resp && resp.ok;
   } catch (e) {
     // eslint-disable-next-line no-console
     console.warn('Webhook delivery failed for', job.uuid, e.message);
+    return false;
   }
 }
 
@@ -47,17 +49,24 @@ async function processOne(job) {
       images: Array.isArray(result?.images) ? result.images : [],
       info: typeof result?.info === 'string' ? result.info : (result?.info ? JSON.stringify(result.info) : null),
     };
-    db.completeJob(job.uuid, resultObj);
-
-    // Build webhook payload
-    const webhookPayload = {
-      uuid: job.uuid,
-      job_status: 'completed',
-      progress: 1,
-      images: resultObj.images,
-      info: resultObj.info,
-    };
-    await sendWebhook(job, webhookPayload);
+    if (job.webhookUrl) {
+      // Move to webhook-pending state first; finalize to completed only if webhook returns 2xx
+      db.markWebhookPending(job.uuid, resultObj);
+      const webhookPayload = {
+        uuid: job.uuid,
+        job_status: 'webhook',
+        progress: 1,
+        images: resultObj.images,
+        info: resultObj.info,
+      };
+      const ok = await sendWebhook(job, webhookPayload);
+      if (ok) {
+        db.completeJob(job.uuid, resultObj);
+      }
+    } else {
+      // No webhook configured; mark completed immediately
+      db.completeJob(job.uuid, resultObj);
+    }
   } catch (e) {
     const message = e && (e.body || e.message) ? `${e.message}${e.body ? ': ' + String(e.body).slice(0, 500) : ''}` : 'Unknown error';
     db.failJob(job.uuid, message);
@@ -75,7 +84,8 @@ async function processOne(job) {
 async function mainLoop() {
   // eslint-disable-next-line no-console
   console.log('Worker started. Poll interval:', POLL_MS, 'ms');
-  while (true) {
+  // noinspection InfiniteLoopJS
+    while (true) {
     try {
       const job = db.leaseNextQueuedJob();
       if (!job) {
