@@ -63,6 +63,10 @@ GitHub Container Registry (GHCR) images
     image: ghcr.io/<owner>/<repo>:latest
   - Ensure your .env still provides AUTH_TOKEN and DB_PATH (default /data/jobs.db) and keep the /data volume mapping for persistence.
 
+Multi-architecture support
+- The CI workflow builds and publishes multi-arch images for both linux/amd64 and linux/arm64 using Docker Buildx and QEMU emulation.
+- Docker will automatically pull the correct image for your platform. On Apple Silicon (M1/M2/M3), the arm64 variant will be used; on most cloud VMs and PCs, the amd64 variant will be used.
+
 Background worker
 - Purpose: Polls the SQLite DB for queued jobs and executes them against the configured Automatic1111 instance.
 - Local run:

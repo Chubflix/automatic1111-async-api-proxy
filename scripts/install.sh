@@ -10,14 +10,14 @@ set -euo pipefail
 REPO_RAW_BASE="https://raw.githubusercontent.com/Chubflix/automatic1111-async-api-proxy/main"
 
 echo "==> Downloading docker-compose.yml (GHCR image)"
-curl -fsSL "$REPO_RAW_BASE/deploy/docker-compose.ghcr.yml" -o docker-compose.yml
+curl -fsSL "${REPO_RAW_BASE}/deploy/docker-compose.ghcr.yml" -o docker-compose.yml
 
 echo "==> Creating data directory (for SQLite persistence)"
 mkdir -p data
 
 if [ ! -f .env ]; then
   echo "==> Creating .env from example"
-  curl -fsSL "$REPO_RAW_BASE/.env.example" -o .env
+  curl -fsSL "${REPO_RAW_BASE}/.env.example" -o .env
 else
   echo "==> .env already exists; leaving it unchanged"
 fi
