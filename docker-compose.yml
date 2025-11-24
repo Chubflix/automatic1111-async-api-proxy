@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  automatic-async-proxy:
+    container_name: automatic-async-proxy
+    build:
+      context: .
+      dockerfile: Dockerfile
+    # If a local .env file exists at the repo root, docker compose will load it
+    # automatically for variable interpolation AND we also pass it through to
+    # the container as environment variables via env_file below.
+    env_file:
+      - .env
+    environment:
+      # Provide safe defaults; values from .env will override these.
+      PORT: ${PORT:-3000}
+    ports:
+      - "${PORT:-3000}:3000"
+    restart: unless-stopped

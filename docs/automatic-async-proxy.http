@@ -1,0 +1,97 @@
+# HTTP client requests for automatic-async-proxy
+# Use this file in JetBrains IDEs (IntelliJ/WebStorm/Rider) or VS Code REST Client.
+#
+# Quick start:
+# 1) Start the server with a valid AUTH_TOKEN (see docs/deployment.md)
+# 2) Set the token variable below to the same value.
+# 3) Run the requests in order. The txt2img request stores {{jobId}} for later steps.
+
+@host = localhost
+@port = 3000
+@baseUrl = http://{{host}}:{{port}}
+@token = your-secure-api-token
+
+### Health (no auth)
+GET {{baseUrl}}/health
+
+### Submit txt2img job (stores jobId)
+POST {{baseUrl}}/sdapi/v1/txt2img
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "prompt": "a cute cat, watercolor style",
+  "steps": 5,
+  "webhookUrl": null,
+  "webhookKey": null
+}
+> {%
+// Capture UUID for subsequent requests
+let data = {};
+try {
+  if (response && typeof response.body !== 'undefined') {
+    data = typeof response.body === 'string' ? JSON.parse(response.body) : response.body;
+  }
+} catch (e) {
+  // Some IDEs already provide a parsed object; avoid throwing on JSON.parse
+  client.log('Note: response body parse skipped: ' + e);
+  data = response.body || {};
+}
+if (data.uuid) {
+  client.global.set("jobId", data.uuid);
+  client.log("Stored jobId=" + data.uuid);
+} else {
+  client.log("No uuid in response; cannot set jobId");
+}
+%}
+
+### List jobs (array of summaries)
+GET {{baseUrl}}/sdapi/v1/jobs
+Authorization: Bearer {{token}}
+
+### Get job details (uses {{jobId}})
+GET {{baseUrl}}/sdapi/v1/jobs/{{jobId}}
+Authorization: Bearer {{token}}
+
+### Cancel job (204 on success)
+DELETE {{baseUrl}}/sdapi/v1/jobs/{{jobId}}
+Authorization: Bearer {{token}}
+
+### Submit img2img job (demo; minimal body)
+POST {{baseUrl}}/sdapi/v1/img2img
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "prompt": "make it monochrome",
+  "denoising_strength": 0.5,
+  "webhookUrl": null,
+  "webhookKey": null
+}
+> {%
+    // Capture UUID for subsequent requests
+    let data = {};
+    try {
+        if (response && typeof response.body !== 'undefined') {
+            data = typeof response.body === 'string' ? JSON.parse(response.body) : response.body;
+        }
+    } catch (e) {
+        // Some IDEs already provide a parsed object; avoid throwing on JSON.parse
+        client.log('Note: response body parse skipped: ' + e);
+        data = response.body || {};
+    }
+    if (data.uuid) {
+        client.global.set("jobId", data.uuid);
+        client.log("Stored jobId=" + data.uuid);
+    } else {
+        client.log("No uuid in response; cannot set jobId");
+    }
+%}
+
+### Get SD models list
+GET {{baseUrl}}/sdapi/v1/sd-models
+Authorization: Bearer {{token}}
+
+### Get LoRAs list
+GET {{baseUrl}}/sdapi/v1/loras
+Authorization: Bearer {{token}}
