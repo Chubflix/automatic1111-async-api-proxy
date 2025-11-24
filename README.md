@@ -11,7 +11,7 @@ Quick install (Docker Compose, GHCR images)
 
 Run this command in an empty folder where you want to deploy the stack:
 
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/chubflix/sd-async-api-proxy/main/scripts/install.sh)"
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Chubflix/automatic1111-async-api-proxy/refs/heads/main/scripts/install.sh)"
 
 What happens next
 - Edit the generated .env and set at least AUTH_TOKEN (and AUTOMATIC1111_API_BASE if you’ll run the worker).

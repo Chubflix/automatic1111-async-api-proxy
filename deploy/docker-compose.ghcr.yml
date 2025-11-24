@@ -3,7 +3,7 @@ version: "3.8"
 services:
   automatic-async-proxy:
     container_name: automatic-async-proxy
-    image: ghcr.io/chubflix/sd-async-api-proxy:latest
+    image: ghcr.io/chubflix/automatic1111-async-api-proxy:latest
     env_file:
       - .env
     environment:
@@ -16,7 +16,7 @@ services:
 
   worker:
     container_name: automatic-async-proxy-worker
-    image: ghcr.io/chubflix/sd-async-api-proxy:latest
+    image: ghcr.io/chubflix/automatic1111-async-api-proxy:latest
     env_file:
       - .env
     environment:
