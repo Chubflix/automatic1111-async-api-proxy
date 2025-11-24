@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Async Automatic1111 Drop-in Replacement API with Civitai Metadata and Webhook Key
-  version: 1.5.0
+  version: 1.6.1
 servers:
   - url: https://your-server.com
 security:
@@ -30,6 +30,7 @@ components:
           enum:
             - queued
             - processing
+            - webhook
             - completed
             - error
             - canceled
@@ -98,7 +99,7 @@ paths:
                       type: string
                       format: uri
                       nullable: true
-                      description: Optional webhook URL to receive job completion notification
+                      description: Optional webhook URL to receive job completion notification. When provided, the server sets job_status to "webhook" and only marks it "completed" after the webhook responds with a 2xx status.
                     webhookKey:
                       type: string
                       nullable: true
@@ -129,6 +130,7 @@ paths:
                       type: string
                       format: uri
                       nullable: true
+                      description: Optional webhook URL to receive job completion notification. When provided, the server sets job_status to "webhook" and only marks it "completed" after the webhook responds with a 2xx status.
                     webhookKey:
                       type: string
                       nullable: true
@@ -142,12 +144,12 @@ paths:
 
   /sdapi/v1/jobs:
     get:
-      summary: List active jobs (queued or processing) with progress summary
+      summary: List active jobs (queued, processing, or webhook) with progress summary
       security:
         - bearerAuth: []
       responses:
         '200':
-          description: List of active jobs (queued or processing) and their progress
+          description: List of active jobs (queued, processing, or webhook) and their progress. Jobs in "webhook" have finished generation and are awaiting a successful (2xx) webhook response before being marked as completed.
           content:
             application/json:
               schema:

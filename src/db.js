@@ -160,10 +160,10 @@ const listSummariesStmt = db.prepare(`
   SELECT uuid, status, progress FROM jobs ORDER BY rowid DESC
 `);
 
-// Active jobs are those that are not finished yet: queued or processing
+// Active jobs are those that are not finished yet: queued, processing, or awaiting webhook confirmation
 const listActiveSummariesStmt = db.prepare(`
   SELECT uuid, status, progress FROM jobs
-  WHERE status IN ('queued','processing')
+  WHERE status IN ('queued','processing','webhook')
   ORDER BY rowid DESC
 `);
 
@@ -266,6 +266,12 @@ module.exports = {
 
   completeJob(uuid, resultObj) {
     db.prepare("UPDATE jobs SET status='completed', progress=1, result=?, error=NULL WHERE uuid=?")
+      .run(serialize(resultObj || null), uuid);
+  },
+
+  // Set job to webhook pending state with final result saved; completion will be confirmed by webhook 2xx
+  markWebhookPending(uuid, resultObj) {
+    db.prepare("UPDATE jobs SET status='webhook', progress=1, result=?, error=NULL WHERE uuid=?")
       .run(serialize(resultObj || null), uuid);
   },
 

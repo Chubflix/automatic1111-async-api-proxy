@@ -116,7 +116,7 @@ api.post('/v1/img2img', (req, res) => {
   return res.status(202).json({ uuid: id });
 });
 
-// List jobs summary (active only: queued or processing)
+// List jobs summary (active only: queued, processing, or webhook)
 api.get('/v1/jobs', (_req, res) => {
   const list = db.listActiveJobsSummary().map((r) => ({
     uuid: r.uuid,
