@@ -181,6 +181,34 @@ api.get('/v1/loras/:loraId', (req, res) => {
   return res.status(404).json({ error: 'LoRa not found' });
 });
 
+// Options passthrough to Automatic1111 (authorized)
+api.get('/v1/options', async (_req, res) => {
+  try {
+    if (!process.env.AUTOMATIC1111_API_BASE) {
+      return res.status(503).json({ error: 'AUTOMATIC1111_API_BASE not configured' });
+    }
+    const options = await a1111.getOptions();
+    return res.json(options ?? {});
+  } catch (e) {
+    const msg = e && (e.body || e.message) ? `${e.message}${e.body ? ': ' + String(e.body).slice(0, 500) : ''}` : 'Upstream error';
+    return res.status(502).json({ error: msg });
+  }
+});
+
+api.post('/v1/options', async (req, res) => {
+  try {
+    if (!process.env.AUTOMATIC1111_API_BASE) {
+      return res.status(503).json({ error: 'AUTOMATIC1111_API_BASE not configured' });
+    }
+    const resp = await a1111.setOptions(req.body || {});
+    // A1111 typically echoes changed options or empty object
+    return res.json(resp ?? {});
+  } catch (e) {
+    const msg = e && (e.body || e.message) ? `${e.message}${e.body ? ': ' + String(e.body).slice(0, 500) : ''}` : 'Upstream error';
+    return res.status(502).json({ error: msg });
+  }
+});
+
 app.use('/sdapi', api);
 
 app.listen(PORT, () => {

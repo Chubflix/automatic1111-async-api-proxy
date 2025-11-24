@@ -95,3 +95,16 @@ Authorization: Bearer {{token}}
 ### Get LoRAs list
 GET {{baseUrl}}/sdapi/v1/loras
 Authorization: Bearer {{token}}
+
+### Get current Automatic1111 options (passthrough)
+GET {{baseUrl}}/sdapi/v1/options
+Authorization: Bearer {{token}}
+
+### Update Automatic1111 options (passthrough)
+POST {{baseUrl}}/sdapi/v1/options
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "CLIP_stop_at_last_layers": 1
+}
