@@ -12,6 +12,30 @@ const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 const app = express();
 app.use(express.json({ limit: '10mb' }));
 
+// CORS: allow browser clients to call the API (configurable via CORS_ORIGINS)
+// CORS_ORIGINS: comma-separated list of allowed origins, or "*" to allow all (default "*")
+const CORS_ORIGINS = (process.env.CORS_ORIGINS || '*')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+app.use((req, res, next) => {
+  const reqOrigin = req.headers.origin;
+  const allowAll = CORS_ORIGINS.length === 0 || (CORS_ORIGINS.length === 1 && CORS_ORIGINS[0] === '*');
+  if (allowAll) {
+    res.header('Access-Control-Allow-Origin', '*');
+  } else if (reqOrigin && CORS_ORIGINS.includes(reqOrigin)) {
+    res.header('Access-Control-Allow-Origin', reqOrigin);
+    res.header('Vary', 'Origin');
+  }
+  res.header('Access-Control-Allow-Methods', 'GET,POST,DELETE,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  // No credentials by default; if needed, can be toggled later with config
+  // res.header('Access-Control-Allow-Credentials', 'true');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  return next();
+});
+
 // Simple bearer auth middleware for protected routes
 const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
 function requireAuth(req, res, next) {

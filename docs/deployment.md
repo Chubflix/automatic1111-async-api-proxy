@@ -8,6 +8,13 @@ This repository now includes a minimal Express implementation of the async API w
 - Health check at /health
 - Optional live proxy to a running Automatic1111 instance for models/loras when AUTOMATIC1111_API_BASE is set
 
+Cross-Origin Resource Sharing (CORS)
+- The API now includes CORS headers so browser-based clients can call it from different origins.
+- Configuration: set CORS_ORIGINS in your .env to a comma-separated list of allowed origins, or use * to allow all (default).
+  - Example: CORS_ORIGINS=https://example.com,https://app.example.com
+  - Default: CORS_ORIGINS=*
+  - Preflight (OPTIONS) requests are handled automatically.
+
 Option A: Run the Express app locally (Yarn)
 - Requirements: Node.js >= 18
 - Environment:
