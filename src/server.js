@@ -3,6 +3,7 @@ const path = require('path');
 const swaggerUi = require('swagger-ui-express');
 const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
+const a1111 = require('./a1111');
 require('dotenv').config();
 
 // App config
@@ -126,15 +127,30 @@ api.delete('/v1/jobs/:uuid', (req, res) => {
 
 // Models and LoRAs - minimal placeholders
 // Note: Spec path is /sd-models (not /models)
-api.get('/v1/sd-models', (_req, res) => {
-  return res.json({ models: [] });
+api.get('/v1/sd-models', async (_req, res) => {
+  try {
+    // If base not configured, return empty list per spec shape
+    if (!process.env.AUTOMATIC1111_API_BASE) return res.json({ models: [] });
+    const models = await a1111.listSdModels();
+    // Pass-through array as-is, but wrap to match our spec { models: [] }
+    return res.json({ models: Array.isArray(models) ? models : [] });
+  } catch (e) {
+    // On error, degrade gracefully to empty list to keep API stable
+    return res.json({ models: [] });
+  }
 });
 // Model detail placeholder
 api.get('/v1/sd-models/:modelId', (req, res) => {
   return res.status(404).json({ error: 'Model not found' });
 });
-api.get('/v1/loras', (_req, res) => {
-  return res.json({ loras: [] });
+api.get('/v1/loras', async (_req, res) => {
+  try {
+    if (!process.env.AUTOMATIC1111_API_BASE) return res.json({ loras: [] });
+    const loras = await a1111.listLoras();
+    return res.json({ loras: Array.isArray(loras) ? loras : [] });
+  } catch (_e) {
+    return res.json({ loras: [] });
+  }
 });
 // LoRa detail placeholder
 api.get('/v1/loras/:loraId', (req, res) => {

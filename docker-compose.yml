@@ -19,3 +19,20 @@ services:
     volumes:
       - ./data:/data
     restart: unless-stopped
+
+  worker:
+    container_name: automatic-async-proxy-worker
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT:-3000}
+      WORKER_POLL_MS: ${WORKER_POLL_MS:-2000}
+    depends_on:
+      - automatic-async-proxy
+    volumes:
+      - ./data:/data
+    command: ["yarn", "worker"]
+    restart: unless-stopped

@@ -5,16 +5,17 @@
   "description": "Async Automatic1111 API wrapper (automatic-async-proxy) with Swagger UI and SQLite-backed job handling",
   "main": "src/server.js",
   "scripts": {
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "worker": "node src/worker.js"
   },
   "dependencies": {
-    "dotenv": "^16.4.5",
-    "express": "^4.19.2",
-    "better-sqlite3": "^9.6.0",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0",
+    "better-sqlite3": "^12.4.6",
     "swagger-ui-express": "^5.0.1",
-    "uuid": "^9.0.1"
+    "uuid": "^13.0.0"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=24"
   }
 }

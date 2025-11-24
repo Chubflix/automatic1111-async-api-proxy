@@ -1,6 +1,6 @@
 # Multi-stage Dockerfile for automatic-async-proxy (Express + Swagger UI)
 
-FROM node:18-alpine AS base
+FROM node:24-alpine AS base
 WORKDIR /app
 
 # System deps for building native modules like better-sqlite3
