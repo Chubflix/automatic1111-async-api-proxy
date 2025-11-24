@@ -1,0 +1,11 @@
+.env
+.env.*
+node_modules/
+docs/
+.idea/
+.junie/
+*.md
+.gitignore
+.nvmrc
+docker-compose.yml
+Dockerfile
