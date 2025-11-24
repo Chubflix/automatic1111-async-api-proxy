@@ -77,11 +77,6 @@ async function mainLoop() {
   console.log('Worker started. Poll interval:', POLL_MS, 'ms');
   while (true) {
     try {
-      if (!process.env.AUTOMATIC1111_API_BASE) {
-        // If not configured, don't consume jobs — wait until configured
-        await sleep(POLL_MS);
-        continue;
-      }
       const job = db.leaseNextQueuedJob();
       if (!job) {
         await sleep(POLL_MS);
