@@ -7,7 +7,7 @@ set -euo pipefail
 # - Copies .env.example to .env if not present
 # - Prints next steps
 
-REPO_RAW_BASE="https://raw.githubusercontent.com/chubflix/sd-async-api-proxy/main"
+REPO_RAW_BASE="https://raw.githubusercontent.com/Chubflix/automatic1111-async-api-proxy/main"
 
 echo "==> Downloading docker-compose.yml (GHCR image)"
 curl -fsSL "$REPO_RAW_BASE/deploy/docker-compose.ghcr.yml" -o docker-compose.yml
