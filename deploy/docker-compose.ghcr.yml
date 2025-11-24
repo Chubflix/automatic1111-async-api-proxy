@@ -1,0 +1,30 @@
+version: "3.8"
+
+services:
+  automatic-async-proxy:
+    container_name: automatic-async-proxy
+    image: ghcr.io/chubflix/sd-async-api-proxy:latest
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT:-3000}
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+
+  worker:
+    container_name: automatic-async-proxy-worker
+    image: ghcr.io/chubflix/sd-async-api-proxy:latest
+    env_file:
+      - .env
+    environment:
+      PORT: ${PORT:-3000}
+      WORKER_POLL_MS: ${WORKER_POLL_MS:-2000}
+    depends_on:
+      - automatic-async-proxy
+    volumes:
+      - ./data:/data
+    command: ["yarn", "worker"]
+    restart: unless-stopped
