@@ -21,7 +21,7 @@ Option A: Run the Express app locally (Yarn)
      - http://localhost:3000/doc
   Notes:
   - The app serves /schemas so $refs resolve (e.g., automatic1111.spec.json).
-  - The API endpoints are minimal and use in-memory storage for jobs (no SQLite yet).
+  - The API now persists jobs in SQLite at DB_PATH (default /data/jobs.db when using Docker/Compose).
 
 Option B: Containerized Node app (Yarn-based image)
 - Build the image:
@@ -43,6 +43,12 @@ Option C: Docker Compose (reads .env if available)
 Notes:
 - The provided docker-compose.yml will read variables from your local .env and also pass them into the container.
 - You can override the port without editing files: PORT=4000 docker compose up --build
+
+Persistence and SQLite volume
+- The Compose file mounts a named volume at /data inside the container: `db-data:/data`.
+- The default DB_PATH is set to /data/jobs.db in .env.example so the SQLite file is persisted to the volume.
+- Data persists across container restarts. To inspect on the host: `docker volume ls` then `docker run --rm -v <volume_name>:/data alpine ls -l /data`.
+- To use a host bind instead of a named volume, replace the service volumes entry with `- ./data:/data` (ensure ./data exists and is writable), and keep DB_PATH=/data/jobs.db.
 
 Quick usage examples
 - Submit a job (txt2img):

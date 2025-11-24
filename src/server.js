@@ -2,6 +2,7 @@ const express = require('express');
 const path = require('path');
 const swaggerUi = require('swagger-ui-express');
 const { v4: uuidv4 } = require('uuid');
+const db = require('./db');
 require('dotenv').config();
 
 // App config
@@ -50,95 +51,76 @@ app.use(
 // Optional redirect from root to docs for convenience
 app.get('/', (_req, res) => res.redirect('/doc'));
 
-// In-memory store for jobs (placeholder until SQLite implementation)
-// Shape aligns with spec: job_status, progress, images, info, webhookUrl, webhookKey
-const jobs = new Map();
-
-// Helper: build summary
-function jobToSummary(job) {
-  return {
-    uuid: job.uuid,
-    job_status: job.job_status,
-    progress: job.progress,
-  };
-}
-
 // Protected API routes under /sdapi
 const api = express.Router();
 api.use(requireAuth);
 
 // Submit txt2img (async)
 api.post('/v1/txt2img', (req, res) => {
-  const { webhookUrl = null, webhookKey = null } = req.body || {};
+  const { webhookUrl = null, webhookKey = null, ...rest } = req.body || {};
   const id = uuidv4();
   const job = {
     uuid: id,
-    kind: 'txt2img',
-    params: req.body || {},
+    status: 'queued',
+    progress: 0,
+    request: rest || {},
+    result: null,
+    error: null,
     webhookUrl,
     webhookKey,
-    job_status: 'queued',
-    progress: 0,
-    images: [],
-    info: null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   };
-  jobs.set(id, job);
+  db.createJob(job);
   return res.status(202).json({ uuid: id });
 });
 
 // Submit img2img (async)
 api.post('/v1/img2img', (req, res) => {
-  const { webhookUrl = null, webhookKey = null } = req.body || {};
+  const { webhookUrl = null, webhookKey = null, ...rest } = req.body || {};
   const id = uuidv4();
   const job = {
     uuid: id,
-    kind: 'img2img',
-    params: req.body || {},
+    status: 'queued',
+    progress: 0,
+    request: rest || {},
+    result: null,
+    error: null,
     webhookUrl,
     webhookKey,
-    job_status: 'queued',
-    progress: 0,
-    images: [],
-    info: null,
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
   };
-  jobs.set(id, job);
+  db.createJob(job);
   return res.status(202).json({ uuid: id });
 });
 
 // List jobs summary (spec: returns an array of JobSummary)
 api.get('/v1/jobs', (_req, res) => {
-  const list = Array.from(jobs.values()).map(jobToSummary);
+  const list = db.listJobsSummary().map((r) => ({
+    uuid: r.uuid,
+    job_status: r.status,
+    progress: r.progress,
+  }));
   return res.json(list);
 });
 
 // Get job details
 api.get('/v1/jobs/:uuid', (req, res) => {
-  const job = jobs.get(req.params.uuid);
+  const job = db.getJob(req.params.uuid);
   if (!job) return res.status(404).json({ error: 'Not found' });
+  const images = job.result && Array.isArray(job.result.images) ? job.result.images : [];
+  const info = (job.result && job.result.info) ? job.result.info : (job.error ?? null);
   const payload = {
     uuid: job.uuid,
-    job_status: job.job_status,
+    job_status: job.status,
     progress: job.progress,
-    images: job.images,
-    info: job.info,
+    images,
+    info,
   };
   return res.json(payload);
 });
 
 // Cancel job (spec: 204 on success, 404 if not found or already completed)
 api.delete('/v1/jobs/:uuid', (req, res) => {
-  const job = jobs.get(req.params.uuid);
-  if (!job) return res.status(404).end();
-  // Only allow cancel if queued or processing
-  if (job.job_status !== 'queued' && job.job_status !== 'processing') {
-    return res.status(404).end();
-  }
-  job.job_status = 'canceled';
-  job.updatedAt = new Date().toISOString();
+  const ok = db.cancelJob(req.params.uuid);
+  if (!ok) return res.status(404).end();
   return res.status(204).end();
 });
 

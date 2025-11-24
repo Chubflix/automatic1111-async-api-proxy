@@ -1,8 +1,8 @@
 {
   "name": "sd-async-api-proxy",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
-  "description": "Async Automatic1111 API wrapper (automatic-async-proxy) with Swagger UI and minimal in-memory job handling",
+  "description": "Async Automatic1111 API wrapper (automatic-async-proxy) with Swagger UI and SQLite-backed job handling",
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js"
@@ -10,6 +10,7 @@
   "dependencies": {
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
+    "better-sqlite3": "^9.6.0",
     "swagger-ui-express": "^5.0.1",
     "uuid": "^9.0.1"
   },
