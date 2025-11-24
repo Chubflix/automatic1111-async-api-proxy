@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   automatic-async-proxy:
     container_name: automatic-async-proxy
