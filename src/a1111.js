@@ -64,4 +64,16 @@ module.exports = {
   async listLoras() {
     return doFetch('/sdapi/v1/loras', { method: 'GET' });
   },
+
+  // Options passthrough
+  async getOptions() {
+    return doFetch('/sdapi/v1/options', { method: 'GET' });
+  },
+  async setOptions(payload) {
+    return doFetch('/sdapi/v1/options', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(payload || {}),
+    });
+  },
 };
