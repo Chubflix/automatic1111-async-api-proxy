@@ -160,6 +160,13 @@ const listSummariesStmt = db.prepare(`
   SELECT uuid, status, progress FROM jobs ORDER BY rowid DESC
 `);
 
+// Active jobs are those that are not finished yet: queued or processing
+const listActiveSummariesStmt = db.prepare(`
+  SELECT uuid, status, progress FROM jobs
+  WHERE status IN ('queued','processing')
+  ORDER BY rowid DESC
+`);
+
 const getJobStmt = db.prepare(`
   SELECT * FROM jobs WHERE uuid = ?
 `);
@@ -187,6 +194,15 @@ module.exports = {
 
   listJobsSummary() {
     return listSummariesStmt.all().map((r) => ({
+      uuid: r.uuid,
+      status: r.status,
+      progress: Number(r.progress || 0),
+    }));
+  },
+
+  // Only queued or processing jobs
+  listActiveJobsSummary() {
+    return listActiveSummariesStmt.all().map((r) => ({
       uuid: r.uuid,
       status: r.status,
       progress: Number(r.progress || 0),

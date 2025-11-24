@@ -142,12 +142,12 @@ paths:
 
   /sdapi/v1/jobs:
     get:
-      summary: List all jobs with progress summary
+      summary: List active jobs (queued or processing) with progress summary
       security:
         - bearerAuth: []
       responses:
         '200':
-          description: List of jobs and their progress
+          description: List of active jobs (queued or processing) and their progress
           content:
             application/json:
               schema:
