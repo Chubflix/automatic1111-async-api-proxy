@@ -227,7 +227,7 @@ module.exports = {
   cancelJob(uuid) {
     const job = this.getJob(uuid);
     if (!job) return false;
-    if (job.status !== 'queued' && job.status !== 'processing') return false;
+    if (job.status !== 'queued' && job.status !== 'processing' && job.status !== 'webhook') return false;
     updateStatusStmt.run({ uuid, status: 'canceled' });
     return true;
   },
