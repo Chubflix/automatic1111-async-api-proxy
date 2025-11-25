@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Async Automatic1111 Drop-in Replacement API with Civitai Metadata and Webhook Key
-  version: 1.6.1
+  version: 1.7.0
 servers:
   - url: https://your-server.com
 security:
@@ -79,6 +79,37 @@ components:
                     type: object
                     nullable: true
                     description: Additional Civitai metadata object
+    FlorenceRequest:
+      type: object
+      required: [ imageUrl, task ]
+      properties:
+        imageUrl:
+          type: string
+          format: uri
+          description: Publicly accessible image URL to analyze
+        mode:
+          type: string
+          enum: [ "Single task", "Cascaded task" ]
+          description: Task mode to set in Florence UI. Defaults based on task.
+          nullable: true
+        task:
+          type: string
+          enum:
+            - "More Detailed Caption + Grounding"
+            - "Referring Expression Segmentation"
+          description: Florence task to run
+        prompt:
+          type: string
+          nullable: true
+          description: Optional prompt (used for Referring Expression Segmentation). Leave empty for caption+grounding.
+        webhookUrl:
+          type: string
+          format: uri
+          nullable: true
+          description: Optional webhook URL to receive job completion notification. When provided, the server sets job_status to "webhook" and only marks it "completed" after the webhook responds with a 2xx status.
+        webhookKey:
+          type: string
+          nullable: true
 
 paths:
   /sdapi/v1/txt2img:
@@ -275,3 +306,28 @@ paths:
                         description: Additional Civitai metadata object
         '404':
           description: LoRa not found
+
+  /sdapi/v1/florence:
+    post:
+      summary: Submit a Florence-2 analysis job (async)
+      description: |
+        Queues a Florence-2 job that will call a backing Gradio app using two endpoints:
+        1) POST /call/update_task_dropdown with the selected mode (Single or Cascaded task)
+        2) POST /call/process_image with an image URL, the task name, prompt, and model "microsoft/Florence-2-large".
+
+        Upon completion, the job result contains images[0] for the output image (if any) and info with the output text.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/FlorenceRequest'
+      responses:
+        '202':
+          description: Job accepted; returns job UUID
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobUUIDResponse'

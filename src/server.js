@@ -116,6 +116,33 @@ api.post('/v1/img2img', (req, res) => {
   return res.status(202).json({ uuid: id });
 });
 
+// Submit Florence job (async)
+api.post('/v1/florence', (req, res) => {
+  const { webhookUrl = null, webhookKey = null, imageUrl, mode, task, prompt } = req.body || {};
+  if (!imageUrl || !task) {
+    return res.status(400).json({ error: 'imageUrl and task are required' });
+  }
+  const id = uuidv4();
+  const job = {
+    uuid: id,
+    status: 'queued',
+    progress: 0,
+    request: {
+      type: 'florence',
+      imageUrl: String(imageUrl),
+      mode: mode ? String(mode) : undefined,
+      task: String(task),
+      prompt: prompt == null ? '' : String(prompt),
+    },
+    result: null,
+    error: null,
+    webhookUrl,
+    webhookKey,
+  };
+  db.createJob(job);
+  return res.status(202).json({ uuid: id });
+});
+
 // List jobs summary (active only: queued, processing, or webhook)
 api.get('/v1/jobs', (_req, res) => {
   const list = db.listActiveJobsSummary().map((r) => ({
