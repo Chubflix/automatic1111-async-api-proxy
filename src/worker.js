@@ -4,6 +4,7 @@
 require('dotenv').config();
 const db = require('./db');
 const a1111 = require('./a1111');
+const florence = require('./florence');
 
 const POLL_MS = process.env.WORKER_POLL_MS ? Number(process.env.WORKER_POLL_MS) : 2000;
 const ENABLE_PROGRESS_TICKS = true;
@@ -13,6 +14,7 @@ async function sleep(ms) {
 }
 
 function chooseEndpoint(request) {
+  if (request?.type === 'florence') return 'florence';
   // If init_images present/useful, treat as img2img; otherwise txt2img
   if (request && Array.isArray(request.init_images) && request.init_images.length > 0) return 'img2img';
   return 'txt2img';
@@ -40,15 +42,24 @@ async function processOne(job) {
   try {
     if (ENABLE_PROGRESS_TICKS) db.setProgress(job.uuid, 0.1);
 
-    const result = kind === 'img2img' ? await a1111.img2img(job.request) : await a1111.txt2img(job.request);
+    let resultObj;
+    if (kind === 'florence') {
+      const fr = await florence.run(job.request);
+      // fr: { text, image }
+      resultObj = {
+        images: fr?.image ? [fr.image] : [],
+        info: fr?.text || null,
+      };
+    } else {
+      const result = kind === 'img2img' ? await a1111.img2img(job.request) : await a1111.txt2img(job.request);
+      // Automatic1111 returns { images: [base64...], info: string/json-string }
+      resultObj = {
+        images: Array.isArray(result?.images) ? result.images : [],
+        info: typeof result?.info === 'string' ? result.info : (result?.info ? JSON.stringify(result.info) : null),
+      };
+    }
 
     if (ENABLE_PROGRESS_TICKS) db.setProgress(job.uuid, 0.9);
-
-    // Automatic1111 returns { images: [base64...], info: string/json-string }
-    const resultObj = {
-      images: Array.isArray(result?.images) ? result.images : [],
-      info: typeof result?.info === 'string' ? result.info : (result?.info ? JSON.stringify(result.info) : null),
-    };
     if (job.webhookUrl) {
       // Move to webhook-pending state first; finalize to completed only if webhook returns 2xx
       db.markWebhookPending(job.uuid, resultObj);
