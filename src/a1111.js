@@ -76,4 +76,13 @@ module.exports = {
       body: JSON.stringify(payload || {}),
     });
   },
+
+  // Refresh endpoints to reload newly added models/loras on disk
+  async refreshLoras() {
+    // A1111 expects POST with no body
+    return doFetch('/sdapi/v1/refresh-loras', { method: 'POST' });
+  },
+  async refreshCheckpoints() {
+    return doFetch('/sdapi/v1/refresh-checkpoints', { method: 'POST' });
+  },
 };
