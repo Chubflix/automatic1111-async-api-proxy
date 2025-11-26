@@ -13,7 +13,7 @@ services:
       # Provide safe defaults; values from .env will override these.
       PORT: ${PORT:-3000}
     ports:
-      - "${PORT:-3000}:3000"
+      - "${PORT:-3000}:${PORT:-3000}"
     volumes:
       - ./data:/data
     restart: unless-stopped
@@ -26,7 +26,6 @@ services:
     env_file:
       - .env
     environment:
-      PORT: ${PORT:-3000}
       WORKER_POLL_MS: ${WORKER_POLL_MS:-2000}
     depends_on:
       - automatic-async-proxy

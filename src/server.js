@@ -85,16 +85,34 @@ api.use(requireAuth);
 // Utility: civitai source detection (supports web URLs and AIR tags)
 function isCivitaiUrl(url) {
   const s = String(url || '');
-  // AIR tag e.g. urn:air:sdxl:lora:civitai:1836860@2078658
-  if (s.toLowerCase().startsWith('urn:air:') && s.toLowerCase().includes(':civitai:')) {
-    return true;
-  }
   try {
     const u = new URL(s);
     return u.hostname.includes('civitai.com');
   } catch (_e) {
     return false;
   }
+}
+
+// Normalize asset source URL: convert AIR tags to CivitAI web URLs to avoid passing AIR into worker
+function normalizeAssetSourceUrl(input) {
+  const s = String(input || '').trim();
+  if (!s) return s;
+  const lower = s.toLowerCase();
+  if (lower.startsWith('urn:air:')) {
+    // Expect pattern ...:civitai:<modelId>@<versionId>
+    if (!lower.includes(':civitai:')) return null;
+    try {
+      const last = s.split(':').pop();
+      if (!last || !last.includes('@')) return null;
+      const [modelId, versionId] = last.split('@');
+      if (!modelId || !versionId) return null;
+      // Build canonical CivitAI URL
+      return `https://civitai.com/models/${encodeURIComponent(modelId)}?modelVersionId=${encodeURIComponent(versionId)}`;
+    } catch (_e) {
+      return null;
+    }
+  }
+  return s;
 }
 
 // Submit txt2img (async)
@@ -172,6 +190,12 @@ api.post('/v1/assets/download', (req, res) => {
     return res.status(400).json({ error: 'url is required' });
   }
 
+  // Normalize AIR tags to CivitAI URLs; reject invalid AIRs
+  const normalizedUrl = normalizeAssetSourceUrl(String(url));
+  if (String(url).toLowerCase().startsWith('urn:air:') && !normalizedUrl) {
+    return res.status(400).json({ error: 'Invalid AIR tag. Expected civitai provider with model@version.' });
+  }
+
   const id = uuidv4();
   const job = {
     uuid: id,
@@ -180,8 +204,8 @@ api.post('/v1/assets/download', (req, res) => {
     request: {
       type: 'asset-download',
       kind: k,
-      source_url: String(url),
-      civitai: isCivitaiUrl(url),
+      source_url: normalizedUrl,
+      civitai: isCivitaiUrl(normalizedUrl),
     },
     result: null,
     error: null,

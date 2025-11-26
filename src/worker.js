@@ -127,10 +127,6 @@ mainLoop();
 // ---------------- Asset download (CivitAI) ----------------
 function isCivitaiUrl(url) {
   const s = String(url || '');
-  // Support AIR tag, e.g., urn:air:sdxl:lora:civitai:1836860@2078658
-  if (s.toLowerCase().startsWith('urn:air:') && s.toLowerCase().includes(':civitai:')) {
-    return true;
-  }
   try {
     const u = new URL(s);
     return u.hostname.includes('civitai.com');
@@ -141,20 +137,7 @@ function isCivitaiUrl(url) {
 
 function extractCivitaiVersionId(input) {
   const s = String(input || '');
-  // AIR tag form: urn:air:sdxl:(model|lora):civitai:<modelId>@<versionId>
-  if (s.toLowerCase().startsWith('urn:air:') && s.toLowerCase().includes(':civitai:')) {
-    // Grab the last segment after the final ':' then split by '@'
-    try {
-      const last = s.split(':').pop(); // e.g., "1836860@2078658"
-      if (last && last.includes('@')) {
-        const ver = last.split('@')[1];
-        return ver ? String(ver) : null;
-      }
-    } catch (_e) {
-      // fall through to URL parsing
-    }
-  }
-  // Fallback: civitai.com URL with ?modelVersionId=...
+
   try {
     const u = new URL(s);
     const v = u.searchParams.get('modelVersionId');
@@ -190,6 +173,10 @@ function uniquePath(dir, filename) {
 
 async function processAssetDownload(job) {
   const { kind, source_url } = job.request || {};
+  // Defensive: AIR tags should be normalized on the server. Reject if any slip through.
+  if (String(source_url || '').toLowerCase().startsWith('urn:air:')) {
+    throw new Error('AIR tag must be normalized to a CivitAI URL on the server');
+  }
   if (!isCivitaiUrl(source_url)) {
     db.failJob(job.uuid, 'Non CivitAI downloads are not supported at the moment');
     throw new Error('Non CivitAI downloads are not supported at the moment');
@@ -257,17 +244,18 @@ async function processAssetDownload(job) {
 
   // Store images metadata
   for (const img of images) {
-    try {
-      db.addAssetImage({
-        asset_id: assetId,
-        url: img.url,
-        is_nsfw: !!img.nsfw,
-        width: img.width ?? null,
-        height: img.height ?? null,
-        meta: img.meta ?? null,
-      });
-    } catch (_e) {
-      // ignore faulty image rows
+      const imageData = {
+          asset_id: assetId,
+          url: img.url,
+          is_nsfw: !!img.nsfw,
+          width: img.width ?? null,
+          height: img.height ?? null,
+          meta: img.meta ?? null,
+      };
+      try {
+        db.addAssetImage(imageData);
+    } catch (e) {
+        log.error('Failed to store image metadata:', {error: e, img, imageData});
     }
   }
 
