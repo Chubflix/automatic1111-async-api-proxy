@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Async Automatic1111 Drop-in Replacement API with Civitai Metadata and Webhook Key
-  version: 2.0.0
+  version: 2.1.0
 servers:
   - url: https://ai-proxy.svc.cklio.com/
 security:
@@ -13,6 +13,27 @@ components:
       scheme: bearer
       bearerFormat: "Token"
   schemas:
+    AssetImage:
+      type: object
+      description: Image metadata associated with an asset
+      properties:
+        url:
+          type: string
+          format: uri
+        is_nsfw:
+          type: boolean
+          description: Whether the image is marked as NSFW
+        width:
+          type: integer
+          nullable: true
+        height:
+          type: integer
+          nullable: true
+        meta:
+          type: object
+          nullable: true
+          additionalProperties: true
+      required: [ url ]
     AssetDownloadRequest:
       type: object
       required: [ kind, url ]
@@ -45,6 +66,11 @@ components:
           type: string
           format: uri
           nullable: true
+        images:
+          type: array
+          description: Optional additional images related to the asset
+          items:
+            $ref: '#/components/schemas/AssetImage'
         example_prompt:
           type: string
           nullable: true
