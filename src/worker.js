@@ -253,6 +253,20 @@ async function processAssetDownload(job) {
     }
   }
 
+  // After successful download, ask Automatic1111 to refresh the relevant asset list
+  try {
+    if (String(kind) === 'lora') {
+      await a1111.refreshLoras();
+    } else {
+      // treat all non-lora as checkpoints/models
+      await a1111.refreshCheckpoints();
+    }
+  } catch (e) {
+    // Do not fail the job if the refresh endpoint is unavailable; just log
+    // eslint-disable-next-line no-console
+    console.warn('Refresh request failed after asset download:', e && e.message ? e.message : e);
+  }
+
   // Return a compact result object to store with the job
   return {
     asset_id: assetId,
