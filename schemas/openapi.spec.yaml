@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Async Automatic1111 Drop-in Replacement API with Civitai Metadata and Webhook Key
-  version: 2.1.0
+  version: 2.3.0
 servers:
   - url: https://ai-proxy.svc.cklio.com/
 security:
@@ -13,6 +13,15 @@ components:
       scheme: bearer
       bearerFormat: "Token"
   schemas:
+    ErrorItem:
+      type: object
+      properties:
+        uuid:
+          type: string
+          format: uuid
+        error:
+          type: string
+      required: [ uuid, error ]
     AssetImage:
       type: object
       description: Image metadata associated with an asset
@@ -240,6 +249,56 @@ paths:
                 $ref: '#/components/schemas/AssetResponse'
         '404':
           description: Not found
+
+  /sdapi/v1/assets:
+    get:
+      summary: List assets
+      description: Returns all assets. Optionally filter by kind.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: kind
+          required: false
+          schema:
+            type: string
+            enum: [ model, lora ]
+          description: Optional filter to return only models or only loras
+      responses:
+        '200':
+          description: List of assets
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AssetResponse'
+
+  /sdapi/v1/errors:
+    get:
+      summary: List recent job errors
+      description: Returns recent jobs with status=error. Most recent first.
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: query
+          name: limit
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 50
+          description: Maximum number of error items to return (1-500)
+      responses:
+        '200':
+          description: Recent errors
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ErrorItem'
   /sdapi/v1/txt2img:
     post:
       summary: Submit txt2img generation job (async)
