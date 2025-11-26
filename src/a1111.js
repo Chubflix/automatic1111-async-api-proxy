@@ -1,7 +1,7 @@
 // Lightweight Automatic1111 Web UI API client
 // Uses Node 18+ global fetch (Node 20+/24 in this project) — no extra deps
 
-const DEFAULT_TIMEOUT_MS = 60_000;
+const DEFAULT_TIMEOUT_MS =  process.env.AUTOMATIC1111_API_TIMEOUT_MS || 60_000;
 
 function getBaseUrl() {
   const base = process.env.AUTOMATIC1111_API_BASE || '';
