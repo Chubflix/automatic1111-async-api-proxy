@@ -209,6 +209,14 @@ const listActiveSummariesStmt = db.prepare(`
   ORDER BY rowid DESC
 `);
 
+// Recent error jobs (most recent first)
+const listErrorsStmt = db.prepare(`
+  SELECT uuid, error FROM jobs
+  WHERE status = 'error' AND error IS NOT NULL
+  ORDER BY rowid DESC
+  LIMIT @limit
+`);
+
 const getJobStmt = db.prepare(`
   SELECT * FROM jobs WHERE uuid = ?
 `);
@@ -240,6 +248,12 @@ module.exports = {
       status: r.status,
       progress: Number(r.progress || 0),
     }));
+  },
+
+  // Recent job errors, default limit 50
+  listRecentErrors(limit = 50) {
+    const lim = Math.max(1, Math.min(500, Number(limit) || 50));
+    return listErrorsStmt.all({ limit: lim }).map((r) => ({ uuid: r.uuid, error: r.error }));
   },
 
   // Only queued or processing jobs
@@ -366,6 +380,42 @@ module.exports = {
       updated_at: r.updated_at,
       images,
     };
+  },
+
+  // List assets with optional kind filter ('model' | 'lora').
+  // Returns an array of asset objects matching getAsset() shape, ordered by created_at DESC.
+  listAssets(kind) {
+    let rows;
+    if (kind && (String(kind) === 'model' || String(kind) === 'lora')) {
+      rows = db
+        .prepare('SELECT * FROM assets WHERE kind = ? ORDER BY datetime(created_at) DESC, id DESC')
+        .all(String(kind));
+    } else {
+      rows = db.prepare('SELECT * FROM assets ORDER BY datetime(created_at) DESC, id DESC').all();
+    }
+    return rows.map((r) => {
+      const imagesRows = listAssetImagesStmt.all(r.id);
+      const images = imagesRows.map((row) => ({
+        url: row.url,
+        is_nsfw: !!row.is_nsfw,
+        width: row.width == null ? null : Number(row.width),
+        height: row.height == null ? null : Number(row.height),
+        meta: deserialize(row.meta, null),
+      }));
+      return {
+        id: r.id,
+        kind: r.kind,
+        name: r.name ?? null,
+        source_url: r.source_url,
+        example_prompt: r.example_prompt ?? null,
+        min: Number(r.min),
+        max: Number(r.max),
+        local_path: r.local_path ?? null,
+        created_at: r.created_at,
+        updated_at: r.updated_at,
+        images,
+      };
+    });
   },
 
   // Insert a new image record for an asset

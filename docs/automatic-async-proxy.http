@@ -49,8 +49,12 @@ if (data.uuid) {
 GET {{baseUrl}}/sdapi/v1/jobs
 Authorization: Bearer {{token}}
 
+### List recent errors (most recent first, optional ?limit=100)
+GET {{baseUrl}}/sdapi/v1/errors?limit=100
+Authorization: Bearer {{token}}
+
 ### Get job details (uses {{jobId}})
-GET {{baseUrl}}/sdapi/v1/jobs/4af899d3-5bc3-4a8a-8747-497c98029bfa
+GET {{baseUrl}}/sdapi/v1/jobs/341116af-a114-42cd-8025-fd29880c88d3
 Authorization: Bearer {{token}}
 
 ### Cancel job (204 on success)
@@ -94,6 +98,18 @@ Authorization: Bearer {{token}}
 
 ### Get LoRAs list
 GET {{baseUrl}}/sdapi/v1/loras
+Authorization: Bearer {{token}}
+
+### List all assets
+GET {{baseUrl}}/sdapi/v1/assets
+Authorization: Bearer {{token}}
+
+### List only LoRA assets
+GET {{baseUrl}}/sdapi/v1/assets?kind=lora
+Authorization: Bearer {{token}}
+
+### List only model assets
+GET {{baseUrl}}/sdapi/v1/assets?kind=model
 Authorization: Bearer {{token}}
 
 ### Enqueue asset download (model) — initial request only needs kind and url; returns a job uuid

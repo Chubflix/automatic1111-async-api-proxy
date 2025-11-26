@@ -202,6 +202,16 @@ api.get('/v1/assets/:id', (req, res) => {
   return res.json(rest);
 });
 
+// List all assets with optional kind filter (?kind=model|lora)
+api.get('/v1/assets', (req, res) => {
+  const kind = req.query && req.query.kind ? String(req.query.kind).toLowerCase() : null;
+  if (kind && kind !== 'model' && kind !== 'lora') {
+    return res.status(400).json({ error: "kind must be 'model' or 'lora'" });
+  }
+  const list = db.listAssets(kind || undefined);
+  return res.json(list);
+});
+
 // List jobs summary (active only: queued, processing, or webhook)
 api.get('/v1/jobs', (_req, res) => {
   const list = db.listActiveJobsSummary().map((r) => ({
@@ -210,6 +220,13 @@ api.get('/v1/jobs', (_req, res) => {
     progress: r.progress,
   }));
   return res.json(list);
+});
+
+// List recent job errors (most recent first). Optional ?limit=50
+api.get('/v1/errors', (req, res) => {
+  const limit = req.query && req.query.limit ? Number(req.query.limit) : 50;
+  const items = db.listRecentErrors(limit);
+  return res.json(items);
 });
 
 // Get job details
