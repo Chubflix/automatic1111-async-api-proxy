@@ -80,10 +80,15 @@ app.get('/', (_req, res) => res.redirect('/doc'));
 const api = express.Router();
 api.use(requireAuth);
 
-// Utility: naive civitai URL detection
+// Utility: civitai source detection (supports web URLs and AIR tags)
 function isCivitaiUrl(url) {
+  const s = String(url || '');
+  // AIR tag e.g. urn:air:sdxl:lora:civitai:1836860@2078658
+  if (s.toLowerCase().startsWith('urn:air:') && s.toLowerCase().includes(':civitai:')) {
+    return true;
+  }
   try {
-    const u = new URL(String(url));
+    const u = new URL(s);
     return u.hostname.includes('civitai.com');
   } catch (_e) {
     return false;

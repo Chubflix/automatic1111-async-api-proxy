@@ -160,3 +160,13 @@ Content-Type: application/json
   "kind": "model",
   "url": "https://civitai.com/models/212532?modelVersionId=1467389"
 }
+
+### Download using AIR tag (CivitAI) — version selected via @
+POST {{baseUrl}}/sdapi/v1/assets/download
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "kind": "lora",
+  "url": "urn:air:sdxl:lora:civitai:212532@1660164"
+}
