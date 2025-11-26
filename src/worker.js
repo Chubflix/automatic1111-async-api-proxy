@@ -129,17 +129,37 @@ mainLoop();
 
 // ---------------- Asset download (CivitAI) ----------------
 function isCivitaiUrl(url) {
+  const s = String(url || '');
+  // Support AIR tag, e.g., urn:air:sdxl:lora:civitai:1836860@2078658
+  if (s.toLowerCase().startsWith('urn:air:') && s.toLowerCase().includes(':civitai:')) {
+    return true;
+  }
   try {
-    const u = new URL(String(url));
+    const u = new URL(s);
     return u.hostname.includes('civitai.com');
   } catch (_e) {
     return false;
   }
 }
 
-function extractCivitaiVersionId(url) {
+function extractCivitaiVersionId(input) {
+  const s = String(input || '');
+  // AIR tag form: urn:air:sdxl:(model|lora):civitai:<modelId>@<versionId>
+  if (s.toLowerCase().startsWith('urn:air:') && s.toLowerCase().includes(':civitai:')) {
+    // Grab the last segment after the final ':' then split by '@'
+    try {
+      const last = s.split(':').pop(); // e.g., "1836860@2078658"
+      if (last && last.includes('@')) {
+        const ver = last.split('@')[1];
+        return ver ? String(ver) : null;
+      }
+    } catch (_e) {
+      // fall through to URL parsing
+    }
+  }
+  // Fallback: civitai.com URL with ?modelVersionId=...
   try {
-    const u = new URL(String(url));
+    const u = new URL(s);
     const v = u.searchParams.get('modelVersionId');
     return v ? String(v) : null;
   } catch (_e) {
@@ -180,7 +200,7 @@ async function processAssetDownload(job) {
 
   const versionId = extractCivitaiVersionId(source_url);
   if (!versionId) {
-    throw new Error('CivitAI URL missing modelVersionId query parameter');
+    throw new Error('CivitAI version id not specified');
   }
 
   const API_BASE = (process.env.CIVIT_AI_ENDPOINT || '').replace(/\/$/, '');
