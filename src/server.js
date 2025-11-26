@@ -80,6 +80,16 @@ app.get('/', (_req, res) => res.redirect('/doc'));
 const api = express.Router();
 api.use(requireAuth);
 
+// Utility: naive civitai URL detection
+function isCivitaiUrl(url) {
+  try {
+    const u = new URL(String(url));
+    return u.hostname.includes('civitai.com');
+  } catch (_e) {
+    return false;
+  }
+}
+
 // Submit txt2img (async)
 api.post('/v1/txt2img', (req, res) => {
   const { webhookUrl = null, webhookKey = null, ...rest } = req.body || {};
@@ -141,6 +151,48 @@ api.post('/v1/florence', (req, res) => {
   };
   db.createJob(job);
   return res.status(202).json({ uuid: id });
+});
+
+// Asset download request (models or loras)
+// Initial request only accepts { kind: 'model'|'lora', url: string } and enqueues a job in jobs table.
+api.post('/v1/assets/download', (req, res) => {
+  const { kind, url } = req.body || {};
+  const k = String(kind || '').toLowerCase();
+  if (k !== 'model' && k !== 'lora') {
+    return res.status(400).json({ error: "kind must be 'model' or 'lora'" });
+  }
+  if (!url || typeof url !== 'string') {
+    return res.status(400).json({ error: 'url is required' });
+  }
+
+  const id = uuidv4();
+  const job = {
+    uuid: id,
+    status: 'queued',
+    progress: 0,
+    request: {
+      type: 'asset-download',
+      kind: k,
+      source_url: String(url),
+      civitai: isCivitaiUrl(url),
+    },
+    result: null,
+    error: null,
+    webhookUrl: null,
+    webhookKey: null,
+  };
+  db.createJob(job);
+  // Return the job uuid; further metadata (name, image_url, min/max, etc.) can be set via future edits/endpoints.
+  return res.status(202).json({ uuid: id });
+});
+
+// Get asset by id
+api.get('/v1/assets/:id', (req, res) => {
+  const asset = db.getAsset(req.params.id);
+  if (!asset) return res.status(404).json({ error: 'Not found' });
+  // Spec change: AssetsResponse no longer includes status or error
+  const { status, error, ...rest } = asset || {};
+  return res.json(rest);
 });
 
 // List jobs summary (active only: queued, processing, or webhook)

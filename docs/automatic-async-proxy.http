@@ -96,6 +96,38 @@ Authorization: Bearer {{token}}
 GET {{baseUrl}}/sdapi/v1/loras
 Authorization: Bearer {{token}}
 
+### Enqueue asset download (model) — initial request only needs kind and url; returns a job uuid
+POST {{baseUrl}}/sdapi/v1/assets/download
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "kind": "model",
+  "url": "https://example.com/path/to/model.safetensors"
+}
+> {%
+// Capture UUID for subsequent requests (asset download job)
+let data = {};
+try {
+  if (response && typeof response.body !== 'undefined') {
+    data = typeof response.body === 'string' ? JSON.parse(response.body) : response.body;
+  }
+} catch (e) {
+  client.log('Note: response body parse skipped: ' + e);
+  data = response.body || {};
+}
+if (data.uuid) {
+  client.global.set("assetJobId", data.uuid);
+  client.log("Stored assetJobId=" + data.uuid);
+} else {
+  client.log("No uuid in response; cannot set assetJobId");
+}
+%}
+
+### Check asset download job status (uses {{assetJobId}})
+GET {{baseUrl}}/sdapi/v1/jobs/{{assetJobId}}
+Authorization: Bearer {{token}}
+
 ### Get current Automatic1111 options (passthrough)
 GET {{baseUrl}}/sdapi/v1/options
 Authorization: Bearer {{token}}
@@ -107,4 +139,24 @@ Content-Type: application/json
 
 {
   "CLIP_stop_at_last_layers": 1
+}
+
+### Donwload a new Lora
+POST {{baseUrl}}/sdapi/v1/assets/download
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "kind": "model",
+  "url": "https://civitai.com/models/212532/all-disney-princess-xl-lora-model-from-ralph-breaks-the-internet?modelVersionId=1660164"
+}
+
+### Donwload a new Lora (version selected)
+POST {{baseUrl}}/sdapi/v1/assets/download
+Authorization: Bearer {{token}}
+Content-Type: application/json
+
+{
+  "kind": "model",
+  "url": "https://civitai.com/models/212532?modelVersionId=1467389"
 }
