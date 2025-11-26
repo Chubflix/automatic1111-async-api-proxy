@@ -6,10 +6,8 @@
 # 2) Set the token variable below to the same value.
 # 3) Run the requests in order. The txt2img request stores {{jobId}} for later steps.
 
-@host = ai-proxy.svc.cklio.com
-@port = 3000
-@baseUrl = https://{{host}}
-@token = your-secure-api-token
+@baseUrl = {{baseUrl}}
+@token = {{token}}
 
 ### Health (no auth)
 GET {{baseUrl}}/health
@@ -58,7 +56,7 @@ GET {{baseUrl}}/sdapi/v1/jobs/341116af-a114-42cd-8025-fd29880c88d3
 Authorization: Bearer {{token}}
 
 ### Cancel job (204 on success)
-DELETE {{baseUrl}}/sdapi/v1/jobs/{{jobId}}
+DELETE {{baseUrl}}/sdapi/v1/jobs/2da73b4f-6ce5-429e-b4c2-e06b1a927d42
 Authorization: Bearer {{token}}
 
 ### Submit img2img job (demo; minimal body)
@@ -110,6 +108,10 @@ Authorization: Bearer {{token}}
 
 ### List only model assets
 GET {{baseUrl}}/sdapi/v1/assets?kind=model
+Authorization: Bearer {{token}}
+
+### Get a single asset
+GET {{baseUrl}}/sdapi/v1/assets/1
 Authorization: Bearer {{token}}
 
 ### Enqueue asset download (model) — initial request only needs kind and url; returns a job uuid

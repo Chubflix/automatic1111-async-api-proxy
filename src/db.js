@@ -349,11 +349,11 @@ module.exports = {
       created_at: now,
       updated_at: now,
     };
-    db.prepare(`
+    const info = db.prepare(`
       INSERT INTO assets (kind, name, source_url, example_prompt, min, max, local_path, created_at, updated_at)
       VALUES (@kind, @name, @source_url, @example_prompt, @min, @max, @local_path, @created_at, @updated_at)
     `).run(row);
-    return row.id;
+    return info.lastInsertRowid;
   },
 
   getAsset(id) {
@@ -420,6 +420,9 @@ module.exports = {
 
   // Insert a new image record for an asset
   addAssetImage(image) {
+    if (image.asset_id == null) {
+      throw new Error('addAssetImage: asset_id is required');
+    }
     const row = {
       asset_id: image.asset_id,
       url: String(image.url),
