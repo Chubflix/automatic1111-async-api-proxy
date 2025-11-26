@@ -242,6 +242,20 @@ async function processAssetDownload(job) {
     local_path: destPath,
   });
 
+  // Save the first preview image next to the downloaded file
+  try {
+    if (images.length > 0 && images[0] && images[0].url) {
+      const firstImageUrl = String(images[0].url);
+      const base = path.basename(destPath, path.extname(destPath));
+      const previewPath = path.join(path.dirname(destPath), `${base}.preview.jpeg`);
+      await downloadToFile(firstImageUrl, previewPath);
+      log.debug('Saved preview image to', previewPath);
+    }
+  } catch (e) {
+    // Do not fail the job if preview saving fails; just warn
+    log.warn('Failed to save preview image:', e && e.message ? e.message : e);
+  }
+
   // Store images metadata
   for (const img of images) {
       const imageData = {
