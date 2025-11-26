@@ -51,11 +51,10 @@ function ensureTargetSchema() {
 
     -- Assets table for models and LoRAs downloads/registry
     CREATE TABLE IF NOT EXISTS assets (
-      id TEXT PRIMARY KEY,
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
       kind TEXT NOT NULL CHECK (kind IN ('model','lora')),
       name TEXT,
       source_url TEXT NOT NULL,
-      image_url TEXT,
       example_prompt TEXT,
       min REAL NOT NULL DEFAULT 1,
       max REAL NOT NULL DEFAULT 1,
@@ -64,7 +63,21 @@ function ensureTargetSchema() {
       updated_at TEXT NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_assets_kind ON assets(kind);
-    CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status);
+    -- (no status index; assets table is not used as a queue)
+
+    -- Images for assets (multiple images per asset)
+    CREATE TABLE IF NOT EXISTS assets_images (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      asset_id TEXT NOT NULL,
+      url TEXT NOT NULL,
+      is_nsfw INTEGER NOT NULL DEFAULT 0,
+      width INTEGER,
+      height INTEGER,
+      meta TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (asset_id) REFERENCES assets(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_assets_images_asset_id ON assets_images(asset_id);
   `);
 }
 
@@ -167,6 +180,18 @@ function deserialize(text, fallback) {
     return fallback;
   }
 }
+
+// Helpers for assets_images table
+const insertAssetImageStmt = db.prepare(`
+  INSERT INTO assets_images (asset_id, url, is_nsfw, width, height, meta, created_at)
+  VALUES (@asset_id, @url, @is_nsfw, @width, @height, @meta, @created_at)
+`);
+
+const listAssetImagesStmt = db.prepare(`
+  SELECT asset_id, url, is_nsfw, width, height, meta FROM assets_images
+  WHERE asset_id = ?
+  ORDER BY id ASC
+`);
 
 const insertJobStmt = db.prepare(`
   INSERT INTO jobs (uuid, status, progress, request, result, error, webhookUrl, webhookKey)
@@ -300,11 +325,9 @@ module.exports = {
   createAsset(asset) {
     const now = new Date().toISOString();
     const row = {
-      id: asset.id,
       kind: asset.kind,
       name: asset.name ?? null,
       source_url: asset.source_url,
-      image_url: asset.image_url ?? null,
       example_prompt: asset.example_prompt ?? null,
       min: asset.min == null ? 1 : Number(asset.min),
       max: asset.max == null ? 1 : Number(asset.max),
@@ -313,8 +336,8 @@ module.exports = {
       updated_at: now,
     };
     db.prepare(`
-      INSERT INTO assets (id, kind, name, source_url, image_url, example_prompt, min, max, status, error, local_path, created_at, updated_at)
-      VALUES (@id, @kind, @name, @source_url, @image_url, @example_prompt, @min, @max, @status, @error, @local_path, @created_at, @updated_at)
+      INSERT INTO assets (kind, name, source_url, example_prompt, min, max, local_path, created_at, updated_at)
+      VALUES (@kind, @name, @source_url, @example_prompt, @min, @max, @local_path, @created_at, @updated_at)
     `).run(row);
     return row.id;
   },
@@ -322,18 +345,53 @@ module.exports = {
   getAsset(id) {
     const r = db.prepare('SELECT * FROM assets WHERE id = ?').get(id);
     if (!r) return null;
+    const imagesRows = listAssetImagesStmt.all(id);
+    const images = imagesRows.map((row) => ({
+      url: row.url,
+      is_nsfw: !!row.is_nsfw,
+      width: row.width == null ? null : Number(row.width),
+      height: row.height == null ? null : Number(row.height),
+      meta: deserialize(row.meta, null),
+    }));
     return {
       id: r.id,
       kind: r.kind,
       name: r.name ?? null,
       source_url: r.source_url,
-      image_url: r.image_url ?? null,
       example_prompt: r.example_prompt ?? null,
       min: Number(r.min),
       max: Number(r.max),
       local_path: r.local_path ?? null,
       created_at: r.created_at,
       updated_at: r.updated_at,
+      images,
     };
+  },
+
+  // Insert a new image record for an asset
+  addAssetImage(image) {
+    const row = {
+      asset_id: image.asset_id,
+      url: String(image.url),
+      is_nsfw: image.is_nsfw ? 1 : 0,
+      width: image.width == null ? null : Number(image.width),
+      height: image.height == null ? null : Number(image.height),
+      meta: image.meta == null ? null : serialize(image.meta),
+      created_at: new Date().toISOString(),
+    };
+    insertAssetImageStmt.run(row);
+    return true;
+  },
+
+  // List images for an asset id
+  listAssetImages(asset_id) {
+    const rows = listAssetImagesStmt.all(asset_id);
+    return rows.map((row) => ({
+      url: row.url,
+      is_nsfw: !!row.is_nsfw,
+      width: row.width == null ? null : Number(row.width),
+      height: row.height == null ? null : Number(row.height),
+      meta: deserialize(row.meta, null),
+    }));
   },
 };
