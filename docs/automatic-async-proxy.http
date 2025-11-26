@@ -6,9 +6,9 @@
 # 2) Set the token variable below to the same value.
 # 3) Run the requests in order. The txt2img request stores {{jobId}} for later steps.
 
-@host = localhost
+@host = ai-proxy.svc.cklio.com
 @port = 3000
-@baseUrl = http://{{host}}:{{port}}
+@baseUrl = https://{{host}}
 @token = your-secure-api-token
 
 ### Health (no auth)
@@ -50,7 +50,7 @@ GET {{baseUrl}}/sdapi/v1/jobs
 Authorization: Bearer {{token}}
 
 ### Get job details (uses {{jobId}})
-GET {{baseUrl}}/sdapi/v1/jobs/{{jobId}}
+GET {{baseUrl}}/sdapi/v1/jobs/4af899d3-5bc3-4a8a-8747-497c98029bfa
 Authorization: Bearer {{token}}
 
 ### Cancel job (204 on success)
@@ -158,7 +158,7 @@ Content-Type: application/json
 
 {
   "kind": "model",
-  "url": "https://civitai.com/models/212532?modelVersionId=1467389"
+  "url": "https://civitai.com/models/1836860?modelVersionId=2078658"
 }
 
 ### Download using AIR tag (CivitAI) — version selected via @
@@ -168,5 +168,5 @@ Content-Type: application/json
 
 {
   "kind": "lora",
-  "url": "urn:air:sdxl:lora:civitai:212532@1660164"
+  "url": "urn:air:sdxl:lora:civitai:1836860@2078658"
 }

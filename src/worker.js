@@ -7,6 +7,8 @@ const path = require('path');
 const db = require('./db');
 const a1111 = require('./a1111');
 const florence = require('./florence');
+const createLogger = require('./logger');
+const log = createLogger('worker');
 
 const POLL_MS = process.env.WORKER_POLL_MS ? Number(process.env.WORKER_POLL_MS) : 2000;
 const ENABLE_PROGRESS_TICKS = true;
@@ -31,8 +33,7 @@ async function sendWebhook(job, payload) {
     const resp = await fetch(job.webhookUrl, { method: 'POST', headers, body: JSON.stringify(payload) });
     return !!resp && resp.ok;
   } catch (e) {
-    // eslint-disable-next-line no-console
-    console.warn('Webhook delivery failed for', job.uuid, e.message);
+    log.warn('Webhook delivery failed for', job.uuid, e.message);
     return false;
   }
 }
@@ -98,8 +99,7 @@ async function processOne(job) {
 }
 
 async function mainLoop() {
-  // eslint-disable-next-line no-console
-  console.log('Worker started. Poll interval:', POLL_MS, 'ms');
+  log.info('Worker started. Poll interval:', POLL_MS, 'ms');
   // noinspection InfiniteLoopJS
     while (true) {
     try {
@@ -108,12 +108,10 @@ async function mainLoop() {
         await sleep(POLL_MS);
         continue;
       }
-      // eslint-disable-next-line no-console
-      console.log('Processing job', job.uuid);
+      log.debug('Processing job', job.uuid);
       await processOne(job);
     } catch (e) {
-      // eslint-disable-next-line no-console
-      console.error('Worker loop error:', e.message);
+      log.error('Worker loop error:', e.message);
       await sleep(POLL_MS);
     }
   }
@@ -121,8 +119,7 @@ async function mainLoop() {
 
 // Validate config
 if (!process.env.AUTOMATIC1111_API_BASE) {
-  // eslint-disable-next-line no-console
-  console.warn('Warning: AUTOMATIC1111_API_BASE is not set. Worker cannot process jobs.');
+  log.warn('Warning: AUTOMATIC1111_API_BASE is not set. Worker cannot process jobs.');
 }
 
 mainLoop();
@@ -214,6 +211,7 @@ async function processAssetDownload(job) {
 
   // Fetch version metadata
   const versionUrl = `${API_BASE}/model-versions/${encodeURIComponent(versionId)}`;
+  log.debug('Fetching CivitAI version metadata from', versionUrl);
   const headers = { 'content-type': 'application/json', authorization: `Bearer ${API_TOKEN}` };
   const resp = await fetch(versionUrl, { headers });
   if (!resp.ok) {
@@ -283,8 +281,7 @@ async function processAssetDownload(job) {
     }
   } catch (e) {
     // Do not fail the job if the refresh endpoint is unavailable; just log
-    // eslint-disable-next-line no-console
-    console.warn('Refresh request failed after asset download:', e && e.message ? e.message : e);
+    log.warn('Refresh request failed after asset download:', e && e.message ? e.message : e);
   }
 
   // Return a compact result object to store with the job

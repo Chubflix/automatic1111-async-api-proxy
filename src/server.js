@@ -5,6 +5,8 @@ const { v4: uuidv4 } = require('uuid');
 const db = require('./db');
 const a1111 = require('./a1111');
 require('dotenv').config();
+const createLogger = require('./logger');
+const log = createLogger('server');
 
 // App config
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
@@ -296,6 +298,5 @@ api.post('/v1/options', async (req, res) => {
 app.use('/sdapi', api);
 
 app.listen(PORT, () => {
-  // eslint-disable-next-line no-console
-  console.log(`Swagger UI available at http://localhost:${PORT}/doc`);
+  log.info(`Swagger UI available at http://localhost:${PORT}/doc`);
 });
