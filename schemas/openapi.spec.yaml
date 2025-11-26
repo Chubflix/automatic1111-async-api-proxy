@@ -1,9 +1,9 @@
 openapi: 3.0.3
 info:
   title: Async Automatic1111 Drop-in Replacement API with Civitai Metadata and Webhook Key
-  version: 1.7.0
+  version: 2.0.0
 servers:
-  - url: https://your-server.com
+  - url: https://ai-proxy.svc.cklio.com/
 security:
   - bearerAuth: []
 components:
@@ -13,6 +13,56 @@ components:
       scheme: bearer
       bearerFormat: "Token"
   schemas:
+    AssetDownloadRequest:
+      type: object
+      required: [ kind, url ]
+      properties:
+        kind:
+          type: string
+          enum: [ model, lora ]
+          description: Type of asset to download
+        url:
+          type: string
+          format: uri
+          description: Source URL of the model or LoRA. If this is a Civitai URL, the worker should use the Civitai API to download it.
+
+    AssetResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        kind:
+          type: string
+          enum: [ model, lora ]
+        name:
+          type: string
+          nullable: true
+        source_url:
+          type: string
+          format: uri
+        image_url:
+          type: string
+          format: uri
+          nullable: true
+        example_prompt:
+          type: string
+          nullable: true
+        min:
+          type: number
+          format: float
+        max:
+          type: number
+          format: float
+        local_path:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     JobUUIDResponse:
       type: object
       properties:
@@ -112,6 +162,58 @@ components:
           nullable: true
 
 paths:
+  /sdapi/v1/assets/download:
+    post:
+      summary: Request download/registration of a model or LoRA
+      description: |
+        Enqueue a download task for a model or LoRA using the jobs table. The initial request only accepts kind and url.
+        A background worker is expected to download the asset. If the URL is from civitai.com, the worker should use the Civitai API.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AssetDownloadRequest'
+      responses:
+        '202':
+          description: Accepted. Download job has been enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JobUUIDResponse'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error:
+                    type: string
+
+  /sdapi/v1/assets/{id}:
+    get:
+      summary: Get asset download/registry entry
+      security:
+        - bearerAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Asset entry
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AssetResponse'
+        '404':
+          description: Not found
   /sdapi/v1/txt2img:
     post:
       summary: Submit txt2img generation job (async)

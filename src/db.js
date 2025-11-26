@@ -48,6 +48,23 @@ function ensureTargetSchema() {
       webhookKey TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+
+    -- Assets table for models and LoRAs downloads/registry
+    CREATE TABLE IF NOT EXISTS assets (
+      id TEXT PRIMARY KEY,
+      kind TEXT NOT NULL CHECK (kind IN ('model','lora')),
+      name TEXT,
+      source_url TEXT NOT NULL,
+      image_url TEXT,
+      example_prompt TEXT,
+      min REAL NOT NULL DEFAULT 1,
+      max REAL NOT NULL DEFAULT 1,
+      local_path TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_assets_kind ON assets(kind);
+    CREATE INDEX IF NOT EXISTS idx_assets_status ON assets(status);
   `);
 }
 
@@ -277,5 +294,46 @@ module.exports = {
 
   failJob(uuid, message) {
     db.prepare("UPDATE jobs SET status='error', error=? WHERE uuid=?").run(message || 'Unknown error', uuid);
+  },
+
+  // ASSETS (models & loras)
+  createAsset(asset) {
+    const now = new Date().toISOString();
+    const row = {
+      id: asset.id,
+      kind: asset.kind,
+      name: asset.name ?? null,
+      source_url: asset.source_url,
+      image_url: asset.image_url ?? null,
+      example_prompt: asset.example_prompt ?? null,
+      min: asset.min == null ? 1 : Number(asset.min),
+      max: asset.max == null ? 1 : Number(asset.max),
+      local_path: asset.local_path ?? null,
+      created_at: now,
+      updated_at: now,
+    };
+    db.prepare(`
+      INSERT INTO assets (id, kind, name, source_url, image_url, example_prompt, min, max, status, error, local_path, created_at, updated_at)
+      VALUES (@id, @kind, @name, @source_url, @image_url, @example_prompt, @min, @max, @status, @error, @local_path, @created_at, @updated_at)
+    `).run(row);
+    return row.id;
+  },
+
+  getAsset(id) {
+    const r = db.prepare('SELECT * FROM assets WHERE id = ?').get(id);
+    if (!r) return null;
+    return {
+      id: r.id,
+      kind: r.kind,
+      name: r.name ?? null,
+      source_url: r.source_url,
+      image_url: r.image_url ?? null,
+      example_prompt: r.example_prompt ?? null,
+      min: Number(r.min),
+      max: Number(r.max),
+      local_path: r.local_path ?? null,
+      created_at: r.created_at,
+      updated_at: r.updated_at,
+    };
   },
 };
