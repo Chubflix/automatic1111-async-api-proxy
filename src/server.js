@@ -372,11 +372,24 @@ api.get('/v1/assets', (req, res) => {
 });
 
 // List jobs summary (active only: queued, processing, or webhook)
+// Extended to include type and created_at fields
 api.get('/v1/jobs', (_req, res) => {
-  const list = db.listActiveJobsSummary().map((r) => ({
+  function inferType(request) {
+    const req = request || {};
+    const explicit = String(req.type || '').toLowerCase();
+    if (explicit === 'asset-download') return 'user-download';
+    if (explicit === 'florence') return 'florence';
+    // If init_images (non-empty) present, treat as img2img; otherwise txt2img
+    if (Array.isArray(req.init_images) && req.init_images.length > 0) return 'img2img';
+    return 'txt2img';
+  }
+
+  const list = db.listActiveJobsDetailed().map((r) => ({
     uuid: r.uuid,
     job_status: r.status,
     progress: r.progress,
+    type: inferType(r.request),
+    created_at: r.created_at || null,
   }));
   return res.json(list);
 });
