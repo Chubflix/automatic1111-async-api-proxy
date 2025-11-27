@@ -336,6 +336,18 @@ module.exports = {
     db.prepare("UPDATE jobs SET status='error', error=? WHERE uuid=?").run(message || 'Unknown error', uuid);
   },
 
+  // Public listing of active jobs: processing (top), then queued, then webhook (bottom)
+  // Returns minimal fields: uuid, status, progress (0..1)
+  listActiveJobs() {
+    const rows = db
+      .prepare(
+        "SELECT uuid, status, progress FROM jobs WHERE status IN ('processing','queued','webhook') " +
+          "ORDER BY CASE status WHEN 'processing' THEN 0 WHEN 'queued' THEN 1 WHEN 'webhook' THEN 2 ELSE 3 END, rowid ASC"
+      )
+      .all();
+    return rows.map((r) => ({ uuid: r.uuid, status: r.status, progress: Number(r.progress || 0) }));
+  },
+
   // ASSETS (models & loras)
   createAsset(asset) {
     const now = new Date().toISOString();

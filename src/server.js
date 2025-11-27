@@ -78,6 +78,86 @@ app.use(
 // Optional redirect from root to docs for convenience
 app.get('/', (_req, res) => res.redirect('/doc'));
 
+// Public endpoints for viewing active jobs (no auth)
+// JSON: ordered list of jobs currently processing (top), then queued, then waiting webhook (bottom)
+app.get('/public/jobs.json', (_req, res) => {
+  try {
+    const jobs = db.listActiveJobs();
+    res.status(200).json({ jobs, updatedAt: new Date().toISOString() });
+  } catch (e) {
+    log.error('Failed to list active jobs:', e && e.message ? e.message : e);
+    res.status(500).json({ error: 'Failed to list jobs' });
+  }
+});
+
+// Simple auto-updating HTML page
+app.get('/jobs', (_req, res) => {
+  const html = `<!doctype html>
+  <html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Active Jobs</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; margin: 20px; }
+      h1 { font-size: 1.25rem; }
+      table { border-collapse: collapse; width: 100%; max-width: 900px; }
+      th, td { border: 1px solid #ddd; padding: 8px; }
+      th { background: #f5f5f5; text-align: left; }
+      tr:nth-child(even) { background: #fafafa; }
+      .status { text-transform: capitalize; font-weight: 600; }
+      .bar { height: 10px; background: #eee; border-radius: 4px; overflow: hidden; }
+      .bar > span { display: block; height: 100%; background: #4caf50; }
+      .footer { color: #666; font-size: 12px; margin-top: 10px; }
+    </style>
+  </head>
+  <body>
+    <h1>Active Jobs (processing, queued, webhook)</h1>
+    <div class="footer">Auto-updates every second</div>
+    <table>
+      <thead>
+        <tr><th>#</th><th>UUID</th><th>Status</th><th>Progress</th></tr>
+      </thead>
+      <tbody id="rows"><tr><td colspan="4">Loading…</td></tr></tbody>
+    </table>
+    <div class="footer" id="meta"></div>
+    <script>
+      async function refresh() {
+        try {
+          const res = await fetch('/public/jobs.json', { cache: 'no-store' });
+          const data = await res.json();
+          const tbody = document.getElementById('rows');
+          if (!Array.isArray(data.jobs) || data.jobs.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4">No active jobs</td></tr>';
+          } else {
+            tbody.innerHTML = data.jobs.map(function(j, idx) {
+              var pct = Math.round((Number(j.progress) || 0) * 100);
+              return '<tr>' +
+                '<td>' + (idx + 1) + '</td>' +
+                '<td><code>' + j.uuid + '</code></td>' +
+                '<td class="status">' + j.status + '</td>' +
+                '<td>' +
+                  '<div class="bar"><span style="width:' + pct + '%;"></span></div>' +
+                  '<div>' + pct + '%</div>' +
+                '</td>' +
+              '</tr>';
+            }).join('');
+          }
+          const meta = document.getElementById('meta');
+          meta.textContent = 'Last updated: ' + (data.updatedAt || new Date().toISOString());
+        } catch (e) {
+          const tbody = document.getElementById('rows');
+          tbody.innerHTML = '<tr><td colspan="4">Failed to load</td></tr>';
+        }
+      }
+      refresh();
+      setInterval(refresh, 1000);
+    </script>
+  </body>
+  </html>`;
+  res.set('Content-Type', 'text/html; charset=utf-8').send(html);
+});
+
 // Protected API routes under /sdapi
 const api = express.Router();
 api.use(requireAuth);
