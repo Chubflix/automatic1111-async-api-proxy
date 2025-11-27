@@ -348,6 +348,18 @@ module.exports = {
     return rows.map((r) => ({ uuid: r.uuid, status: r.status, progress: Number(r.progress || 0) }));
   },
 
+  // Public listing of last failed jobs (most recent first)
+  // Returns minimal fields: uuid, error
+  listLastFailedJobs(limit = 20) {
+    const n = Math.max(1, Math.min(100, Number(limit) || 20));
+    const rows = db
+      .prepare(
+        "SELECT uuid, error FROM jobs WHERE status = 'error' ORDER BY rowid DESC LIMIT ?"
+      )
+      .all(n);
+    return rows.map((r) => ({ uuid: r.uuid, error: r.error || null }));
+  },
+
   // ASSETS (models & loras)
   createAsset(asset) {
     const now = new Date().toISOString();
