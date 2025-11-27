@@ -11,7 +11,6 @@ const createLogger = require('./logger');
 const log = createLogger('worker');
 
 const POLL_MS = process.env.WORKER_POLL_MS ? Number(process.env.WORKER_POLL_MS) : 2000;
-const ENABLE_PROGRESS_TICKS = true;
 
 async function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -44,13 +43,29 @@ async function processOne(job) {
 
   const kind = chooseEndpoint(job.request);
   try {
-    if (ENABLE_PROGRESS_TICKS) db.setProgress(job.uuid, 0.1);
+    // For generation jobs we use scaled 0.1..0.9 window; for asset downloads we report 0..1 directly
+    if (kind !== 'asset-download') {
+      db.setProgress(job.uuid, 0.1);
+    }
 
     let resultObj;
     let lastPolledProgress = 0; // capture progress from A1111 polling to avoid regressions
 
     if (kind === 'asset-download') {
       resultObj = await processAssetDownload(job);
+      // Complete immediately with full progress (no 0.9 cap) and send webhook as completed
+      db.completeJob(job.uuid, resultObj);
+      if (job.webhookUrl) {
+        const webhookPayload = {
+          uuid: job.uuid,
+          job_status: 'completed',
+          progress: 1,
+          images: [],
+          info: resultObj,
+        };
+        await sendWebhook(job, webhookPayload);
+      }
+      return; // asset-download handled fully
     } else if (kind === 'florence') {
       const fr = await florence.run(job.request);
       // fr: { text, image }
@@ -186,16 +201,58 @@ function extractCivitaiVersionId(input) {
   }
 }
 
-async function downloadToFile(downloadUrl, destFile, headers = {}) {
+async function downloadToFile(downloadUrl, destFile, headers = {}, onProgress) {
   const res = await fetch(downloadUrl, { headers });
   if (!res.ok) {
     throw new Error(`Download failed: ${res.status} ${res.statusText}`);
   }
-  const arr = await res.arrayBuffer();
-  const buf = Buffer.from(arr);
+
   await fs.promises.mkdir(path.dirname(destFile), { recursive: true });
-  await fs.promises.writeFile(destFile, buf);
-  return destFile;
+  const tmpPath = `${destFile}.part`;
+  const out = fs.createWriteStream(tmpPath);
+
+  const total = Number(res.headers.get('content-length') || 0);
+  let received = 0;
+  const report = () => {
+    if (typeof onProgress === 'function' && total > 0) {
+      try { onProgress(Math.max(0, Math.min(1, received / total))); } catch (_e) { /* ignore */ }
+    }
+  };
+
+  try {
+    if (!res.body || !res.body.getReader) {
+      // Fallback: buffer the whole body (no incremental progress)
+      const buf = Buffer.from(await res.arrayBuffer());
+      await new Promise((resolve, reject) => {
+        out.write(buf, (err) => (err ? reject(err) : resolve()));
+      });
+    } else {
+      const reader = res.body.getReader();
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value && value.length) {
+          received += value.length;
+          await new Promise((resolve, reject) => {
+            out.write(Buffer.from(value), (err) => (err ? reject(err) : resolve()));
+          });
+          report();
+        }
+      }
+    }
+    await new Promise((resolve, reject) => out.end((err) => (err ? reject(err) : resolve())));
+    await fs.promises.rename(tmpPath, destFile);
+    // Final progress
+    if (typeof onProgress === 'function') {
+      try { onProgress(1); } catch (_e) { /* ignore */ }
+    }
+    return destFile;
+  } catch (e) {
+    try { out.destroy(); } catch (_e) { /* ignore */ }
+    try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_e) { /* ignore */ }
+    throw e;
+  }
 }
 
 function uniquePath(dir, filename) {
@@ -263,7 +320,15 @@ async function processAssetDownload(job) {
   const destPath = uniquePath(destDir, fileName);
 
   // Some CivitAI downloads work with cookie auth; API usually allows Bearer
-  await downloadToFile(downloadUrl, destPath, { authorization: `Bearer ${API_TOKEN}` });
+  await downloadToFile(
+    downloadUrl,
+    destPath,
+    { authorization: `Bearer ${API_TOKEN}` },
+    (p) => {
+      // Report direct 0..1 progress for asset downloads
+      db.setProgress(job.uuid, p);
+    }
+  );
 
   // Create asset record
   const trainedWords = Array.isArray(data.trainedWords) ? data.trainedWords : [];
