@@ -45,7 +45,8 @@ function ensureTargetSchema() {
       result TEXT,
       error TEXT,
       webhookUrl TEXT,
-      webhookKey TEXT
+      webhookKey TEXT,
+      created_at TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 
@@ -79,6 +80,25 @@ function ensureTargetSchema() {
     );
     CREATE INDEX IF NOT EXISTS idx_assets_images_asset_id ON assets_images(asset_id);
   `);
+}
+
+// Ensure the jobs table has a created_at column; add and backfill if missing
+function ensureJobsCreatedAt() {
+  const cols = getCurrentColumns();
+  if (!cols.includes('created_at')) {
+    try {
+      db.exec('BEGIN');
+      db.exec("ALTER TABLE jobs ADD COLUMN created_at TEXT");
+      const now = new Date().toISOString();
+      db.prepare("UPDATE jobs SET created_at = COALESCE(created_at, ?) WHERE created_at IS NULL").run(now);
+      db.exec('COMMIT');
+    } catch (e) {
+      try { db.exec('ROLLBACK'); } catch (_e) { /* ignore */ }
+      // eslint-disable-next-line no-console
+      console.error('Failed to add created_at to jobs:', e && e.message ? e.message : e);
+      throw e;
+    }
+  }
 }
 
 function migrateIfLegacy() {
@@ -167,6 +187,7 @@ function migrateIfLegacy() {
 
 migrateIfLegacy();
 ensureTargetSchema();
+ensureJobsCreatedAt();
 
 // Helpers to (de)serialize JSON fields
 function serialize(val) {
@@ -194,8 +215,8 @@ const listAssetImagesStmt = db.prepare(`
 `);
 
 const insertJobStmt = db.prepare(`
-  INSERT INTO jobs (uuid, status, progress, request, result, error, webhookUrl, webhookKey)
-  VALUES (@uuid, @status, @progress, @request, @result, @error, @webhookUrl, @webhookKey)
+  INSERT INTO jobs (uuid, status, progress, request, result, error, webhookUrl, webhookKey, created_at)
+  VALUES (@uuid, @status, @progress, @request, @result, @error, @webhookUrl, @webhookKey, @created_at)
 `);
 
 const listSummariesStmt = db.prepare(`
@@ -237,6 +258,7 @@ module.exports = {
       error: job.error ?? null,
       webhookUrl: job.webhookUrl ?? null,
       webhookKey: job.webhookKey ?? null,
+      created_at: job.created_at || new Date().toISOString(),
     };
     insertJobStmt.run(row);
     return job.uuid;
@@ -262,6 +284,23 @@ module.exports = {
       uuid: r.uuid,
       status: r.status,
       progress: Number(r.progress || 0),
+    }));
+  },
+
+  // Active jobs with request and created_at for enriched listings
+  listActiveJobsDetailed() {
+    const rows = db.prepare(`
+      SELECT uuid, status, progress, request, created_at
+      FROM jobs
+      WHERE status IN ('queued','processing','webhook')
+      ORDER BY rowid DESC
+    `).all();
+    return rows.map((r) => ({
+      uuid: r.uuid,
+      status: r.status,
+      progress: Number(r.progress || 0),
+      request: deserialize(r.request, {}),
+      created_at: r.created_at || null,
     }));
   },
 

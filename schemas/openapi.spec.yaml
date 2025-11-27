@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Async Automatic1111 Drop-in Replacement API with Civitai Metadata and Webhook Key
-  version: 2.3.0
+  version: 2.4.0
 servers:
   - url: https://ai-proxy.svc.cklio.com/
 security:
@@ -124,6 +124,14 @@ components:
           format: float
           minimum: 0
           maximum: 1
+        type:
+          type: string
+          description: Kind of job inferred from the request
+          enum: [ user-download, florence, img2img, txt2img ]
+        created_at:
+          type: string
+          format: date-time
+          description: Timestamp when the job was enqueued
     JobProgressResponse:
       allOf:
         - $ref: '#/components/schemas/JobSummary'
