@@ -90,6 +90,17 @@ app.get('/public/jobs.json', (_req, res) => {
   }
 });
 
+// JSON: last 20 failed jobs with error reasons
+app.get('/public/failed-jobs.json', (_req, res) => {
+  try {
+    const jobs = db.listLastFailedJobs(20);
+    res.status(200).json({ jobs, updatedAt: new Date().toISOString() });
+  } catch (e) {
+    log.error('Failed to list failed jobs:', e && e.message ? e.message : e);
+    res.status(500).json({ error: 'Failed to list failed jobs' });
+  }
+});
+
 // Simple auto-updating HTML page
 app.get('/jobs', (_req, res) => {
   const html = `<!doctype html>
@@ -109,6 +120,9 @@ app.get('/jobs', (_req, res) => {
       .bar { height: 10px; background: #eee; border-radius: 4px; overflow: hidden; }
       .bar > span { display: block; height: 100%; background: #4caf50; }
       .footer { color: #666; font-size: 12px; margin-top: 10px; }
+      .section { margin-top: 28px; }
+      code { white-space: nowrap; }
+      .error { color: #b00020; }
     </style>
   </head>
   <body>
@@ -121,11 +135,34 @@ app.get('/jobs', (_req, res) => {
       <tbody id="rows"><tr><td colspan="4">Loading…</td></tr></tbody>
     </table>
     <div class="footer" id="meta"></div>
+
+    <div class="section">
+      <h1>Last 20 failed jobs</h1>
+      <table>
+        <thead>
+          <tr><th>#</th><th>UUID</th><th>Error</th></tr>
+        </thead>
+        <tbody id="failedRows"><tr><td colspan="3">Loading…</td></tr></tbody>
+      </table>
+      <div class="footer" id="metaFailed"></div>
+    </div>
     <script>
+      function escapeHtml(s) {
+        return String(s == null ? '' : s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#39;');
+      }
       async function refresh() {
         try {
-          const res = await fetch('/public/jobs.json', { cache: 'no-store' });
-          const data = await res.json();
+          const [resActive, resFailed] = await Promise.all([
+            fetch('/public/jobs.json', { cache: 'no-store' }),
+            fetch('/public/failed-jobs.json', { cache: 'no-store' })
+          ]);
+          const data = await resActive.json();
+          const failed = await resFailed.json();
           const tbody = document.getElementById('rows');
           if (!Array.isArray(data.jobs) || data.jobs.length === 0) {
             tbody.innerHTML = '<tr><td colspan="4">No active jobs</td></tr>';
@@ -134,7 +171,7 @@ app.get('/jobs', (_req, res) => {
               var pct = Math.round((Number(j.progress) || 0) * 100);
               return '<tr>' +
                 '<td>' + (idx + 1) + '</td>' +
-                '<td><code>' + j.uuid + '</code></td>' +
+                '<td><code>' + escapeHtml(j.uuid) + '</code></td>' +
                 '<td class="status">' + j.status + '</td>' +
                 '<td>' +
                   '<div class="bar"><span style="width:' + pct + '%;"></span></div>' +
@@ -145,9 +182,27 @@ app.get('/jobs', (_req, res) => {
           }
           const meta = document.getElementById('meta');
           meta.textContent = 'Last updated: ' + (data.updatedAt || new Date().toISOString());
+
+          const tbodyFailed = document.getElementById('failedRows');
+          if (!Array.isArray(failed.jobs) || failed.jobs.length === 0) {
+            tbodyFailed.innerHTML = '<tr><td colspan="3">No failed jobs</td></tr>';
+          } else {
+            tbodyFailed.innerHTML = failed.jobs.map(function(j, idx) {
+              var err = escapeHtml(j.error || 'Unknown error');
+              return '<tr>' +
+                '<td>' + (idx + 1) + '</td>' +
+                '<td><code>' + escapeHtml(j.uuid) + '</code></td>' +
+                '<td class="error">' + err + '</td>' +
+              '</tr>';
+            }).join('');
+          }
+          const metaFailed = document.getElementById('metaFailed');
+          metaFailed.textContent = 'Last updated: ' + (failed.updatedAt || new Date().toISOString());
         } catch (e) {
           const tbody = document.getElementById('rows');
           tbody.innerHTML = '<tr><td colspan="4">Failed to load</td></tr>';
+          const tbodyFailed = document.getElementById('failedRows');
+          tbodyFailed.innerHTML = '<tr><td colspan="3">Failed to load</td></tr>';
         }
       }
       refresh();
