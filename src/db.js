@@ -327,7 +327,8 @@ module.exports = {
 
   // Set job to webhook pending state with final result saved; completion will be confirmed by webhook 2xx
   markWebhookPending(uuid, resultObj) {
-    db.prepare("UPDATE jobs SET status='webhook', progress=1, result=?, error=NULL WHERE uuid=?")
+    // Keep progress capped at 0.9 while waiting for webhook confirmation
+    db.prepare("UPDATE jobs SET status='webhook', progress=0.9, result=?, error=NULL WHERE uuid=?")
       .run(serialize(resultObj || null), uuid);
   },
 

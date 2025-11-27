@@ -47,6 +47,8 @@ async function processOne(job) {
     if (ENABLE_PROGRESS_TICKS) db.setProgress(job.uuid, 0.1);
 
     let resultObj;
+    let lastPolledProgress = 0; // capture progress from A1111 polling to avoid regressions
+
     if (kind === 'asset-download') {
       resultObj = await processAssetDownload(job);
     } else if (kind === 'florence') {
@@ -57,22 +59,59 @@ async function processOne(job) {
         info: fr?.text || null,
       };
     } else {
-      const result = kind === 'img2img' ? await a1111.img2img(job.request) : await a1111.txt2img(job.request);
-      // Automatic1111 returns { images: [base64...], info: string/json-string }
-      resultObj = {
-        images: Array.isArray(result?.images) ? result.images : [],
-        info: typeof result?.info === 'string' ? result.info : (result?.info ? JSON.stringify(result.info) : null),
-      };
+      // txt2img or img2img — poll A1111 progress while generation runs
+      let running = true;
+      const pollIntervalMs = 1000;
+      const poller = (async () => {
+        while (running) {
+          try {
+            const p = await a1111.getProgress({ skipCurrentImage: true });
+            const raw = Number(p?.progress ?? 0);
+            if (Number.isFinite(raw)) {
+              // Scale raw 0..1 into processing window [0.1, 0.9]
+              const rawClamped = Math.max(0, Math.min(1, raw));
+              const scaled = 0.1 + rawClamped * 0.8;
+              const scaledClamped = Math.max(0.1, Math.min(0.9, scaled));
+              lastPolledProgress = scaledClamped;
+              db.setProgress(job.uuid, scaledClamped);
+            }
+          } catch (e) {
+            // Do not fail the job due to polling errors
+            log.debug('Progress polling failed for job', job.uuid, e.message);
+          }
+          // Small wait between polls; allow quick exit if running was turned off
+          for (let i = 0; i < pollIntervalMs / 100; i += 1) {
+            if (!running) break;
+            // eslint-disable-next-line no-await-in-loop
+            await sleep(100);
+          }
+        }
+      })();
+
+      try {
+        const result = kind === 'img2img' ? await a1111.img2img(job.request) : await a1111.txt2img(job.request);
+        // Automatic1111 returns { images: [base64...], info: string/json-string }
+        resultObj = {
+          images: Array.isArray(result?.images) ? result.images : [],
+          info: typeof result?.info === 'string' ? result.info : (result?.info ? JSON.stringify(result.info) : null),
+        };
+      } finally {
+        // Stop polling regardless of success/failure
+        running = false;
+        // Wait a brief moment to let poller exit cleanly (best-effort)
+        try { await Promise.race([poller, sleep(50)]); } catch (_e) { /* ignore */ }
+      }
     }
 
-    if (ENABLE_PROGRESS_TICKS) db.setProgress(job.uuid, 0.9);
+    // Move progress to webhook threshold (0.9) without regressing if polling went higher already
+    db.setProgress(job.uuid, Math.max(0.9, lastPolledProgress || 0));
     if (job.webhookUrl) {
       // Move to webhook-pending state first; finalize to completed only if webhook returns 2xx
       db.markWebhookPending(job.uuid, resultObj);
       const webhookPayload = {
         uuid: job.uuid,
         job_status: 'webhook',
-        progress: 1,
+        progress: 0.9,
         images: resultObj.images,
         info: resultObj.info,
       };

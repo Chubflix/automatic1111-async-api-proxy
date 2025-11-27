@@ -57,6 +57,12 @@ module.exports = {
     });
   },
 
+  // Progress endpoint
+  async getProgress({ skipCurrentImage = true } = {}) {
+    const q = skipCurrentImage ? '?skip_current_image=true' : '';
+    return doFetch(`/sdapi/v1/progress${q}`, { method: 'GET' });
+  },
+
   // Metadata/listing
   async listSdModels() {
     return doFetch('/sdapi/v1/sd-models', { method: 'GET' });
