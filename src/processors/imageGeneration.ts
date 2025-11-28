@@ -4,6 +4,7 @@ import ProcessorInterface from "./processorInterface";
 import createLogger from '../libs/logger';
 import {getDbApi} from '../libs/db';
 import a1111 from '../libs/a1111';
+import {sleep} from '../libs/sleep';
 const log = createLogger('proc:generate');
 import crypto from 'crypto';
 
@@ -21,6 +22,34 @@ class ImageGenerationProcessor implements ProcessorInterface {
 
     if (req.seed === undefined || req.seed < 0) req.seed = this.generateSeed();
 
+    // txt2img or img2img — poll A1111 progress while generation runs
+    let running = true;
+    const pollIntervalMs = 1000;
+    const poller = (async () => {
+      while (running) {
+        try {
+          const p = await a1111.getProgress({ skipCurrentImage: true });
+          const raw = Number(p?.progress ?? 0);
+          if (Number.isFinite(raw)) {
+            // Scale raw 0..1 into processing window [0.1, 0.9]
+            const rawClamped = Math.max(0, Math.min(1, raw));
+            const scaled = 0.1 + rawClamped * 0.8;
+            const scaledClamped = Math.max(0.1, Math.min(0.9, scaled));
+            db.jobs.updateProgress(job.uuid, scaledClamped);
+          }
+        } catch (e) {
+          // Do not fail the job due to polling errors
+          log.debug('Progress polling failed for job', job.uuid, e?.message || e);
+        }
+        // Small wait between polls; allow quick exit if running was turned off
+        for (let i = 0; i < pollIntervalMs / 100; i += 1) {
+          if (!running) break;
+          // eslint-disable-next-line no-await-in-loop
+          await sleep(100);
+        }
+      }
+    })();
+
     try {
       const result = job.workflow === 'img2img' ? await a1111.img2img(req) : await a1111.txt2img(req);
 
@@ -35,6 +64,11 @@ class ImageGenerationProcessor implements ProcessorInterface {
     } catch (e) {
       log.error('Generation failed for job', job.uuid, e?.message || e);
       throw e;
+    } finally {
+      // Stop polling regardless of success/failure
+      running = false;
+      // Wait a brief moment to let poller exit cleanly (best-effort)
+      try { await Promise.race([poller, sleep(50)]); } catch (_e) { /* ignore */ }
     }
   }
 }
