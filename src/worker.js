@@ -31,8 +31,7 @@ async function processNextJob(job) {
 
   try {
     const result = await processor.run(job);
-    db.updateJob({
-      uuid: job.uuid,
+    db.updateJob(job.uuid, {
       status: workflowStep.success,
       result: result,
       retry_count: 0,
