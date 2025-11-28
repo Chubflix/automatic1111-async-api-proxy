@@ -10,6 +10,10 @@ type Workflow = Record<string, WorkflowStep>;
 const imageGeneration: Workflow = {
     'pending': {
         process: 'generating',
+        success: 'ready-for-tagging',
+    },
+    'ready-for-tagging': {
+        process: 'tagging',
         success: 'ready-for-uploading',
     },
     'ready-for-uploading': {

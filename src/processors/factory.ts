@@ -4,6 +4,7 @@ import WebhookProcessor from "./webhook";
 import UploadProcessor from "./uploading";
 import NoopProcessor from "./noop";
 import CivitAiDownloadProcessor from "./civitaiDownload";
+import DonbooruAutoTagProcessor from "./donbooruAutoTag";
 
 class ProcessorFactory {
   static createProcessor(activeState: string): ProcessorInterface {
@@ -18,6 +19,8 @@ class ProcessorFactory {
         return new WebhookProcessor();
       case 'civitai-download':
         return new CivitAiDownloadProcessor();
+      case 'donbooru-autotag':
+        return new DonbooruAutoTagProcessor();
       default:
         throw new Error(`Unknown active state: ${activeState}`);
     }
