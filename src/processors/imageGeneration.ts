@@ -5,8 +5,13 @@ import createLogger from '../libs/logger';
 import {getDbApi} from '../libs/db';
 import a1111 from '../libs/a1111';
 const log = createLogger('proc:generate');
+import crypto from 'crypto';
 
 class ImageGenerationProcessor implements ProcessorInterface {
+  generateSeed() {
+    return crypto.randomInt(0, 0xFFFFFFFF); // 32-bit unsigned int (0 to 4,294,967,295)
+  }
+
   async run(job: Job) {
     const db = getDbApi();
     // Basic progress bump to indicate work started
@@ -14,11 +19,14 @@ class ImageGenerationProcessor implements ProcessorInterface {
 
     const req = job.request || {} as any;
 
+    if (req.seed === undefined) req.seed = this.generateSeed();
+
     try {
       const result = job.workflow === 'img2img' ? await a1111.img2img(req) : await a1111.txt2img(req);
 
       const payload = {
         images: Array.isArray(result?.images) ? result.images : [],
+        seed: req.seed,
         info: typeof result?.info === 'string' ? result.info : (result?.info ? JSON.stringify(result.info) : null),
       };
 
