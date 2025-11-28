@@ -34,7 +34,7 @@ async function processNextJob(job) {
     db.updateJob({
       uuid: job.uuid,
       status: workflowStep.success,
-      payload: result && result.payload ? result.payload : undefined,
+      result: result,
       retry_count: 0,
       last_retry: null,
     });
