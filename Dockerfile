@@ -1,18 +1,38 @@
-# Multi-stage Dockerfile for automatic-async-proxy (Express + Swagger UI)
+## Multi-stage Dockerfile building TS -> JS and running from dist
 
-FROM node:24-alpine AS base
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 # System deps for building native modules like better-sqlite3
 RUN apk add --no-cache python3 make g++
 
-# Install dependencies first
-COPY package.json ./
-RUN yarn install --production
+# Install dependencies (including dev for build)
+COPY package.json yarn.lock* ./
+RUN yarn install
 
-# Copy application sources
+# Copy sources
+COPY tsconfig.json ./tsconfig.json
 COPY src ./src
 COPY schemas ./schemas
+
+# Build to dist/
+RUN yarn build
+
+
+FROM node:24-alpine AS runtime
+WORKDIR /app
+
+# System deps for better-sqlite3
+RUN apk add --no-cache python3 make g++
+
+# Install only production deps
+COPY package.json yarn.lock* ./
+RUN yarn install --production
+
+# Copy built artifact and runtime assets
+COPY migrations ./migrations
+COPY --from=builder /app/dist ./src
+COPY --from=builder /app/schemas ./schemas
 
 ENV NODE_ENV=production
 ENV PORT=3000
