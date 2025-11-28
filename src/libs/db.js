@@ -201,7 +201,39 @@ function initDb() {
       // getNextReady() - the next jobs where ready = 1 ordered by created_at (oldest first)
     },
     assets: {
-      // list
+      list(kind) {
+        let rows;
+        if (kind && (String(kind) === 'model' || String(kind) === 'lora')) {
+          rows = db
+            .prepare('SELECT * FROM assets WHERE kind = ? ORDER BY datetime(created_at) DESC, id DESC')
+            .all(String(kind));
+        } else {
+          rows = db.prepare('SELECT * FROM assets ORDER BY datetime(created_at) DESC, id DESC').all();
+        }
+        return rows.map((r) => {
+          const imagesRows = statments.listAssetImagesStmt.all(r.id);
+          const images = imagesRows.map((row) => ({
+            url: row.url,
+            is_nsfw: !!row.is_nsfw,
+            width: row.width == null ? null : Number(row.width),
+            height: row.height == null ? null : Number(row.height),
+            meta: deserialize(row.meta, null),
+          }));
+          return {
+            id: r.id,
+            kind: r.kind,
+            name: r.name ?? null,
+            source_url: r.source_url,
+            example_prompt: r.example_prompt ?? null,
+            min: Number(r.min),
+            max: Number(r.max),
+            local_path: r.local_path ?? null,
+            created_at: r.created_at,
+            updated_at: r.updated_at,
+            images,
+          };
+        });
+      },
       get(id) {
         const r = db.prepare('SELECT * FROM assets WHERE id = ?').get(id);
         if (!r) return null;
