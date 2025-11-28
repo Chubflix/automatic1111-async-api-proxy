@@ -13,7 +13,7 @@ const imageGeneration: Workflow = {
         success: 'ready-for-tagging',
     },
     'ready-for-tagging': {
-        process: 'tagging',
+        process: 'donbooru-autotag',
         success: 'ready-for-uploading',
     },
     'ready-for-uploading': {
