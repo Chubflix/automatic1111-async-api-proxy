@@ -99,7 +99,7 @@ function initDb() {
              created_at
       FROM jobs
       WHERE status NOT IN ('completed', 'error')
-        AND ready = 1
+        AND (ready_at <= ? OR ready_at IS NULL)
       ORDER BY rowid DESC
     `),
     listAssetImagesStmt: db.prepare(`
@@ -185,7 +185,7 @@ function initDb() {
         };
       },
       listActive() {
-        const rows = statements.getActive.all();
+        const rows = statements.getActive.all(new Date().toISOString());
         return rows.map(r => ({
           uuid: r.uuid,
           status: r.status,

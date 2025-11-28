@@ -257,6 +257,8 @@ api.get('/v1/jobs', (_req, res) => {
     const list = db.jobs.listActive().map((r) => ({
         uuid: r.uuid,
         job_status: r.status,
+        workflow: r.workflow,
+        retry_count: r.retry_count,
         progress: r.progress,
         type: r.workflow,
         created_at: r.created_at || null,
