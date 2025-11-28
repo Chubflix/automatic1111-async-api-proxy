@@ -12,7 +12,7 @@ const MIGRATIONS_TABLE = `
 `;
 
 async function runMigrations(db) {
-    const migrationsDir = path.join(process.cwd(), 'src', 'migrations');
+    const migrationsDir = path.join(process.cwd(), 'migrations');
 
     console.log('🔄 Checking migrations directory:', migrationsDir);
 

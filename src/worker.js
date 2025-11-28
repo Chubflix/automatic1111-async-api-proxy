@@ -40,6 +40,14 @@ async function processNextJob(job) {
   } catch (error) {
     const failureState = workflowStep.failure || originalWaitingState;
 
+    if (job.retry_count >= 3) {
+      db.jobs.update(job.uuid, {
+        status: 'error',
+        error: error.message,
+      })
+      return;
+    }
+
     if (workflowStep.incrementFailureCounter !== false) {
       db.jobs.incrementFailureCounter(job.uuid);
     }

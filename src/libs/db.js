@@ -81,7 +81,7 @@ function initDb() {
              ready,
              ready_at
       FROM jobs
-      WHERE (ready = 1)
+      WHERE (ready = 1) AND ready_at <= datetime('now')
       ORDER BY datetime(created_at)
       LIMIT 1
     `),
