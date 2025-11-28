@@ -27,11 +27,11 @@ async function processNextJob(job) {
   const activeState = workflowStep.process;
   const processor = ProcessorFactory.createProcessor(activeState);
 
-  db.updateJobStatus(job.uuid, activeState);
+  db.jobs.updateStatus(job.uuid, activeState);
 
   try {
     const result = await processor.run(job);
-    db.updateJob(job.uuid, {
+    db.jobs.update(job.uuid, {
       status: workflowStep.success,
       result: result,
       retry_count: 0,
@@ -44,7 +44,7 @@ async function processNextJob(job) {
       db.incrementFailureCounter(job.uuid);
     }
 
-    db.updateJobStatus(job.uuid, failureState);
+    db.jobs.updateStatus(job.uuid, failureState);
   }
 }
 
@@ -53,6 +53,7 @@ async function mainLoop() {
   // noinspection InfiniteLoopJS
   while (true) {
     try {
+      const job = db.jobs.getNextReady();
       await processNextJob(job);
     } catch (e) {
       log.error('Worker loop error:', e.message);
