@@ -97,7 +97,7 @@ function initDb() {
              last_retry,
              created_at
       FROM jobs
-      WHERE status NOT IN ('completed', 'error')
+      WHERE status NOT IN ('completed', 'error') AND ready = 1
       ORDER BY rowid DESC
     `),
     listAssetImagesStmt: db.prepare(`
