@@ -112,6 +112,8 @@ function initDb() {
       // list() returns array
       // get(uuid) returns null if not found, not undefined
       create(job) {
+        if (!job.workflow) throw new Error('Missing workflow');
+
         const row = {
           uuid: job.uuid,
           status: job.status || 'pending',

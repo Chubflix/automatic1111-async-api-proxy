@@ -220,9 +220,9 @@ api.post('/v1/assets/download', (req, res) => {
     const job = {
         uuid: id,
         status: 'queued',
+        workflow: 'asset-download',
         progress: 0,
         request: {
-            type: 'asset-download',
             kind: k,
             source_url: normalizedUrl,
             civitai: isCivitaiUrl(normalizedUrl),
