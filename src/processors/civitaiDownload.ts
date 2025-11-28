@@ -201,7 +201,7 @@ class CivitAiDownloadProcessor implements ProcessorInterface {
       };
 
       try {
-        getDbApi().assets.addImage(imageData);
+        getDbApi().assets.addImage(assetId, imageData);
       } catch (error) {
         log.error('Failed to store image metadata:', { error, image, imageData });
       }
