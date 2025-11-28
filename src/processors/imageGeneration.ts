@@ -19,7 +19,7 @@ class ImageGenerationProcessor implements ProcessorInterface {
 
     const req = job.request || {} as any;
 
-    if (req.seed === undefined) req.seed = this.generateSeed();
+    if (req.seed === undefined || req.seed < 0) req.seed = this.generateSeed();
 
     try {
       const result = job.workflow === 'img2img' ? await a1111.img2img(req) : await a1111.txt2img(req);
