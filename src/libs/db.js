@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const Database = require('better-sqlite3');
-const {deserialize} = require("./json");
+const {deserialize, serialize} = require("./json");
 
 const DB_PATH = path.join(process.cwd(), process.env.DB_PATH || 'db.sqlite');
 
@@ -81,7 +81,8 @@ function initDb() {
              ready,
              ready_at
       FROM jobs
-      WHERE (ready = 1) AND ready_at <= ?
+      WHERE (ready = 1)
+        AND ready_at <= ?
       ORDER BY datetime(created_at)
       LIMIT 1
     `),
@@ -97,14 +98,20 @@ function initDb() {
              last_retry,
              created_at
       FROM jobs
-      WHERE status NOT IN ('completed', 'error') AND ready = 1
+      WHERE status NOT IN ('completed', 'error')
+        AND ready = 1
       ORDER BY rowid DESC
     `),
     listAssetImagesStmt: db.prepare(`
-      SELECT asset_id, url, is_nsfw, width, height, meta FROM assets_images
+      SELECT asset_id, url, is_nsfw, width, height, meta
+      FROM assets_images
       WHERE asset_id = ?
       ORDER BY id
-    `)
+    `),
+    insertAssetImageStmt: db.prepare(`
+      INSERT INTO assets_images (asset_id, url, is_nsfw, width, height, meta, created_at)
+      VALUES (@asset_id, @url, @is_nsfw, @width, @height, @meta, @created_at)
+    `),
   };
 
   dbApi = {
@@ -119,8 +126,8 @@ function initDb() {
           status: job.status || 'pending',
           workflow: job.workflow || null,
           progress: Number(job.progress || 0),
-          request: JSON.stringify(job.request || {}),
-          result: job.result == null ? null : JSON.stringify(job.result),
+          request: serialize(job.request || {}),
+          result: job.result == null ? null : serialize(job.result),
           error: job.error ?? null,
           webhookUrl: job.webhookUrl ?? null,
           webhookKey: job.webhookKey ?? null,
@@ -144,8 +151,8 @@ function initDb() {
         if (fields.length === 0) return 0;
         const sets = fields.map(k => `${k} = @${k}`);
         const payload = {...data};
-        if ('request' in payload) payload.request = JSON.stringify(payload.request);
-        if ('result' in payload && payload.result != null) payload.result = JSON.stringify(payload.result);
+        if ('request' in payload) payload.request = serialize(payload.request);
+        if ('result' in payload && payload.result != null) payload.result = serialize(payload.result);
         const stmt = db.prepare(`UPDATE jobs
                                  SET ${sets.join(', ')}
                                  WHERE uuid = @uuid`);
@@ -158,7 +165,11 @@ function initDb() {
         return statements.updateProgress.run(progress, uuid).changes;
       },
       cancel(uuid) {
-        const job = db.prepare(`SELECT * FROM jobs WHERE uuid = ? AND status NOT IN ('completed', 'error') LIMIT 1`).get(uuid);
+        const job = db.prepare(`SELECT *
+                                FROM jobs
+                                WHERE uuid = ?
+                                  AND status NOT IN ('completed', 'error')
+                                LIMIT 1`).get(uuid);
         if (!job) return false;
 
         this.updateStatus(uuid, 'canceled');
@@ -169,8 +180,8 @@ function initDb() {
         if (!row) throw new Error('No ready jobs');
         return {
           ...row,
-            request: deserialize(row.request),
-            result: deserialize(row.result),
+          request: deserialize(row.request),
+          result: deserialize(row.result),
         };
       },
       listActive() {
@@ -193,7 +204,7 @@ function initDb() {
             "SELECT uuid, error FROM jobs WHERE status = 'error' ORDER BY rowid DESC LIMIT ?"
           )
           .all(n);
-        return rows.map((r) => ({ uuid: r.uuid, error: r.error || null }));
+        return rows.map((r) => ({uuid: r.uuid, error: r.error || null}));
       },
       incrementFailureCounter(jobUuid) {
         const now = new Date().toISOString();
@@ -261,7 +272,38 @@ function initDb() {
           images,
         };
       },
-      // create
+      create(asset) {
+        const now = new Date().toISOString();
+        const row = {
+          kind: asset.kind,
+          name: asset.name ?? null,
+          source_url: asset.source_url,
+          example_prompt: asset.example_prompt ?? null,
+          min: asset.min == null ? 1 : Number(asset.min),
+          max: asset.max == null ? 1 : Number(asset.max),
+          local_path: asset.local_path ?? null,
+          created_at: now,
+          updated_at: now,
+        };
+        const info = db.prepare(`
+          INSERT INTO assets (kind, name, source_url, example_prompt, min, max, local_path, created_at, updated_at)
+          VALUES (@kind, @name, @source_url, @example_prompt, @min, @max, @local_path, @created_at, @updated_at)
+        `).run(row);
+        return info.lastInsertRowid;
+      },
+      addImage(assetId, image) {
+        const row = {
+          asset_id: assetId,
+          url: String(image.url),
+          is_nsfw: image.is_nsfw ? 1 : 0,
+          width: image.width == null ? null : Number(image.width),
+          height: image.height == null ? null : Number(image.height),
+          meta: image.meta == null ? null : serialize(image.meta),
+          created_at: new Date().toISOString(),
+        };
+        statements.insertAssetImageStmt.run(row);
+        return true;
+      }
       // update
       // addImage(uuid, image)
       // ...

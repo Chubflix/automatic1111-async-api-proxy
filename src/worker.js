@@ -21,7 +21,7 @@ async function processNextJob(job) {
   const originalWaitingState = job.status;
 
   if (!workflow || !workflowStep) {
-    throw new Error(`Unknown workflow step: story="${workflowKey}", status="${job.status}"`);
+    throw new UnrecoverableError(`Unknown workflow step: story="${workflowKey}", status="${job.status}"`);
   }
 
   const activeState = workflowStep.process;
@@ -38,15 +38,15 @@ async function processNextJob(job) {
       last_retry: null,
     });
   } catch (error) {
-    const failureState = workflowStep.failure || originalWaitingState;
-
-    if (job.retry_count >= 3) {
+    if (error.isUnrecoverable || job.retry_count >= 3) {
       db.jobs.update(job.uuid, {
         status: 'error',
         error: error.message,
       })
       return;
     }
+
+    const failureState = workflowStep.failure || originalWaitingState;
 
     if (workflowStep.incrementFailureCounter !== false) {
       db.jobs.incrementFailureCounter(job.uuid);
