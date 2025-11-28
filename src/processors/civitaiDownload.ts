@@ -5,7 +5,37 @@ import createLogger from '../libs/logger';
 import fs from "fs";
 import {getDbApi} from '../libs/db';
 import {refreshLoras, refreshCheckpoints} from '../libs/a1111';
+import UnrecoverableError from "../errors/unrecoverable-error";
+import {
+  type CivitAIVersion,
+  getCivitAIConfig,
+  extractCivitaiVersionId,
+  fetchCivitAIVersion,
+  selectPrimaryFile,
+  extractAssetMetadata,
+} from '../libs/civitai';
+
 const log = createLogger('proc:CivitAI download');
+
+interface AssetRecord {
+  asset_id: number;
+  kind: string;
+  name: string | null;
+  local_path: string;
+  source_url: string;
+}
+
+interface DownloadProgress {
+  (progress: number): void;
+}
+
+// Constants
+const ASSET_KIND = {
+  LORA: 'lora',
+  MODEL: 'model',
+} as const;
+
+const URN_PREFIX = 'urn:air:';
 
 class CivitAiDownloadProcessor implements ProcessorInterface {
   async run(job: Job) {
@@ -13,210 +43,275 @@ class CivitAiDownloadProcessor implements ProcessorInterface {
     return { filepath };
   }
 
-  extractCivitaiVersionId(input: string|null|undefined) {
-    const s = String(input || '');
-
-    try {
-      const u = new URL(s);
-      const v = u.searchParams.get('modelVersionId');
-      return v ? String(v) : null;
-    } catch (_e) {
-      return null;
-    }
+  private getDirectoryConfig() {
+    return {
+      lorasDir: process.env.LORAS_DIR || path.join(process.cwd(), 'loras'),
+      modelsDir: process.env.MODELS_DIR || path.join(process.cwd(), 'models'),
+    };
   }
 
-  uniquePath(dir: string, filename: string) {
-    const base = path.basename(filename, path.extname(filename));
-    const ext = path.extname(filename);
-    let candidate = path.join(dir, filename);
-    let i = 1;
-    while (fs.existsSync(candidate)) {
-      candidate = path.join(dir, `${base} (${i})${ext}`);
-      i += 1;
+  uniquePath(directory: string, filename: string): string {
+    const baseName = path.basename(filename, path.extname(filename));
+    const extension = path.extname(filename);
+    let candidatePath = path.join(directory, filename);
+    let counter = 1;
+
+    while (fs.existsSync(candidatePath)) {
+      candidatePath = path.join(directory, `${baseName} (${counter})${extension}`);
+      counter += 1;
     }
-    return candidate;
+
+    return candidatePath;
   }
 
-  async downloadToFile(downloadUrl: string, destFile: string, headers = {}, onProgress = null) {
-    const res = await fetch(downloadUrl, { headers });
-    if (!res.ok) {
-      throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+  async downloadToFile(
+    downloadUrl: string,
+    destinationFile: string,
+    headers: Record<string, string> = {},
+    onProgress: DownloadProgress | null = null
+  ): Promise<string> {
+    const response = await fetch(downloadUrl, { headers });
+
+    if (!response.ok) {
+      throw new Error(`Download failed: ${response.status} ${response.statusText}`);
     }
 
-    await fs.promises.mkdir(path.dirname(destFile), { recursive: true });
-    const tmpPath = `${destFile}.part`;
-    const out = fs.createWriteStream(tmpPath);
+    await fs.promises.mkdir(path.dirname(destinationFile), { recursive: true });
+    const tempPath = `${destinationFile}.part`;
+    const outputStream = fs.createWriteStream(tempPath);
 
-    const total = Number(res.headers.get('content-length') || 0);
-    let received = 0;
-    const report = () => {
-      if (typeof onProgress === 'function' && total > 0) {
-        try { onProgress(Math.max(0, Math.min(1, received / total))); } catch (_e) { /* ignore */ }
+    const totalBytes = Number(response.headers.get('content-length') || 0);
+    let receivedBytes = 0;
+
+    const reportProgress = () => {
+      if (typeof onProgress === 'function' && totalBytes > 0) {
+        try {
+          const progress = Math.max(0, Math.min(1, receivedBytes / totalBytes));
+          onProgress(progress);
+        } catch (_error) {
+          // Ignore progress callback errors
+        }
       }
     };
 
     try {
-      if (!res.body || !res.body.getReader) {
+      if (!response.body || !response.body.getReader) {
         // Fallback: buffer the whole body (no incremental progress)
-        const buf = Buffer.from(await res.arrayBuffer());
-        await new Promise((resolve, reject) => {
-          out.write(buf, (err) => (err ? reject(err) : resolve(null)));
+        const buffer = Buffer.from(await response.arrayBuffer());
+        await new Promise<void>((resolve, reject) => {
+          outputStream.write(buffer, (error) => (error ? reject(error) : resolve()));
         });
       } else {
-        const reader = res.body.getReader();
-        // eslint-disable-next-line no-constant-condition
+        const reader = response.body.getReader();
+
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
+
           if (value && value.length) {
-            received += value.length;
-            await new Promise((resolve, reject) => {
-              out.write(Buffer.from(value), (err) => (err ? reject(err) : resolve(null)));
+            receivedBytes += value.length;
+            await new Promise<void>((resolve, reject) => {
+              outputStream.write(Buffer.from(value), (error) => (error ? reject(error) : resolve()));
             });
-            report();
+            reportProgress();
           }
         }
       }
-      await new Promise((resolve, reject) => out.end((err) => (err ? reject(err) : resolve(null))));
-      await fs.promises.rename(tmpPath, destFile);
-      // Final progress
+
+      await new Promise<void>((resolve, reject) =>
+        outputStream.end((error) => (error ? reject(error) : resolve()))
+      );
+
+      await fs.promises.rename(tempPath, destinationFile);
+
+      // Final progress update
       if (typeof onProgress === 'function') {
-        try { onProgress(1); } catch (_e) { /* ignore */ }
+        try {
+          onProgress(1);
+        } catch (_error) {
+          // Ignore progress callback errors
+        }
       }
-      return destFile;
-    } catch (e) {
-      try { out.destroy(); } catch (_e) { /* ignore */ }
-      try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_e) { /* ignore */ }
-      throw e;
+
+      return destinationFile;
+    } catch (error) {
+      try {
+        outputStream.destroy();
+      } catch (_error) {
+        // Ignore cleanup errors
+      }
+
+      try {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+      } catch (_error) {
+        // Ignore cleanup errors
+      }
+
+      throw error;
     }
   }
 
-  async processAssetDownload(job: Job) {
-    const { kind, source_url } = job.request || {};
+  private getDestinationPath(assetKind: string, fileName: string, directoryConfig: ReturnType<typeof this.getDirectoryConfig>): string {
+    const destinationDirectory = assetKind === ASSET_KIND.LORA
+      ? directoryConfig.lorasDir
+      : directoryConfig.modelsDir;
 
-    // Defensive: AIR tags should be normalized on the server. Reject if any slip through.
-    if (String(source_url || '').toLowerCase().startsWith('urn:air:')) {
-      throw new UnrecoverableError('Non CivitAI downloads are not supported at the moment');
+    return this.uniquePath(destinationDirectory, fileName);
+  }
+
+  private async savePreviewImage(
+    versionData: CivitAIVersion,
+    assetPath: string
+  ): Promise<void> {
+    const images = Array.isArray(versionData.images) ? versionData.images : [];
+
+    if (images.length === 0 || !images[0]?.url) {
+      return;
     }
 
-    const versionId = this.extractCivitaiVersionId(source_url);
-    if (!versionId) {
-      throw new Error('CivitAI version id not specified');
-    }
+    try {
+      const firstImageUrl = String(images[0].url);
+      const baseFileName = path.basename(assetPath, path.extname(assetPath));
+      const previewPath = path.join(path.dirname(assetPath), `${baseFileName}.preview.jpeg`);
 
-    const API_BASE = (process.env.CIVIT_AI_ENDPOINT || '').replace(/\/$/, '');
-    const API_TOKEN = process.env.CIVIT_AI_TOKEN || '';
-    if (!API_BASE) {
-      throw new Error('CIVIT_AI_ENDPOINT not configured');
+      await this.downloadToFile(firstImageUrl, previewPath);
+      log.debug('Saved preview image to', previewPath);
+    } catch (error) {
+      // Do not fail the job if preview saving fails; just warn
+      const errorMessage = error && typeof error === 'object' && 'message' in error
+        ? error.message
+        : String(error);
+      log.warn('Failed to save preview image:', errorMessage);
     }
-    if (!API_TOKEN) {
-      throw new Error('CIVIT_AI_TOKEN not configured');
-    }
+  }
 
-    // Fetch version metadata
-    const versionUrl = `${API_BASE}/model-versions/${encodeURIComponent(versionId)}`;
-    log.debug('Fetching CivitAI version metadata from', versionUrl);
-    const headers = { 'content-type': 'application/json', authorization: `Bearer ${API_TOKEN}` };
-    const resp = await fetch(versionUrl, { headers });
-    if (!resp.ok) {
-      const txt = await resp.text();
-      throw new Error(`CivitAI fetch failed: ${resp.status} ${resp.statusText} - ${txt.slice(0, 300)}`);
-    }
-    const data = await resp.json();
+  private saveImageMetadata(versionData: CivitAIVersion, assetId: number): void {
+    const images = Array.isArray(versionData.images) ? versionData.images : [];
 
-    // Choose file to download
-    const files = Array.isArray(data.files) ? data.files : [];
-    if (files.length === 0) {
-      throw new Error('No downloadable files found for this CivitAI version');
-    }
-    const primary = files.find((f) => f.primary) || files[0];
-    const fileName = primary.name || `civitai_${versionId}`;
-    const downloadUrl = primary.downloadUrl || data.downloadUrl;
-    if (!downloadUrl) {
-      throw new Error('No downloadUrl provided by CivitAI');
-    }
+    for (const image of images) {
+      const imageData = {
+        asset_id: assetId,
+        url: image.url,
+        is_nsfw: !!image.nsfw,
+        width: image.width ?? null,
+        height: image.height ?? null,
+        meta: image.meta ?? null,
+      };
 
-    const destDir = (String(kind) === 'lora') ? (process.env.LORAS_DIR || path.join(process.cwd(), 'loras'))
-      : (process.env.MODELS_DIR || path.join(process.cwd(), 'models'));
-    const destPath = this.uniquePath(destDir, fileName);
-
-    // Some CivitAI downloads work with cookie auth; API usually allows Bearer
-    await this.downloadToFile(
-      downloadUrl,
-      destPath,
-      { authorization: `Bearer ${API_TOKEN}` },
-      (p) => {
-        getDbApi().jobs.updateProgress(job.uuid, p);
+      try {
+        getDbApi().assets.addImage(imageData);
+      } catch (error) {
+        log.error('Failed to store image metadata:', { error, image, imageData });
       }
-    );
+    }
+  }
 
-    // Create asset record
-    const trainedWords = Array.isArray(data.trainedWords) ? data.trainedWords : [];
-    const examplePrompt = trainedWords.length ? trainedWords.join(', ') : null;
-    const name = (data.model && data.model.name) ? data.model.name : (data.name || null);
-    const images = Array.isArray(data.images) ? data.images : [];
+  private createAssetRecord(
+    assetKind: string,
+    versionData: CivitAIVersion,
+    sourceUrl: string,
+    destinationPath: string
+  ): number {
+    const { name, examplePrompt } = extractAssetMetadata(versionData);
 
-    const assetId = getDbApi().assets.create({
-      kind: String(kind),
+    return getDbApi().assets.create({
+      kind: assetKind,
       name,
-      source_url: String(source_url),
+      source_url: sourceUrl,
       example_prompt: examplePrompt,
       min: 1,
       max: 1,
-      local_path: destPath,
+      local_path: destinationPath,
     });
+  }
 
-    // Save the first preview image next to the downloaded file
+  private async refreshA1111Assets(assetKind: string): Promise<void> {
     try {
-      if (images.length > 0 && images[0] && images[0].url) {
-        const firstImageUrl = String(images[0].url);
-        const base = path.basename(destPath, path.extname(destPath));
-        const previewPath = path.join(path.dirname(destPath), `${base}.preview.jpeg`);
-        await this.downloadToFile(firstImageUrl, previewPath);
-        log.debug('Saved preview image to', previewPath);
-      }
-    } catch (e) {
-      // Do not fail the job if preview saving fails; just warn
-      log.warn('Failed to save preview image:', e && e.message ? e.message : e);
-    }
-
-    // Store images metadata
-    for (const img of images) {
-      const imageData = {
-        asset_id: assetId,
-        url: img.url,
-        is_nsfw: !!img.nsfw,
-        width: img.width ?? null,
-        height: img.height ?? null,
-        meta: img.meta ?? null,
-      };
-      try {
-        getDbApi().assets.addImage(imageData);
-      } catch (e) {
-        log.error('Failed to store image metadata:', {error: e, img, imageData});
-      }
-    }
-
-    // After successful download, ask Automatic1111 to refresh the relevant asset list
-    try {
-      if (String(kind) === 'lora') {
+      if (assetKind === ASSET_KIND.LORA) {
         await refreshLoras();
       } else {
-        // treat all non-lora as checkpoints/models
+        // Treat all non-lora as checkpoints/models
         await refreshCheckpoints();
       }
-    } catch (e) {
+    } catch (error) {
       // Do not fail the job if the refresh endpoint is unavailable; just log
-      log.warn('Refresh request failed after asset download:', e && e.message ? e.message : e);
+      const errorMessage = error && typeof error === 'object' && 'message' in error
+        ? error.message
+        : String(error);
+      log.warn('Refresh request failed after asset download:', errorMessage);
+    }
+  }
+
+  async processAssetDownload(job: Job): Promise<AssetRecord> {
+    const { kind, source_url } = job.request || {};
+    const assetKind = String(kind);
+    const sourceUrl = String(source_url);
+
+    // Defensive: AIR tags should be normalized on the server. Reject if any slip through.
+    if (sourceUrl.toLowerCase().startsWith(URN_PREFIX)) {
+      throw new UnrecoverableError('Non CivitAI downloads are not supported at the moment');
     }
 
-    // Return a compact result object to store with the job
+    const versionId = extractCivitaiVersionId(source_url);
+    if (!versionId) {
+      throw new UnrecoverableError('CivitAI version id not specified');
+    }
+
+    const civitaiConfig = getCivitAIConfig();
+    const directoryConfig = this.getDirectoryConfig();
+
+    // Fetch version metadata from CivitAI
+    const versionData = await fetchCivitAIVersion(versionId, civitaiConfig);
+
+    // Select the primary file to download (wrap in UnrecoverableError if it fails)
+    let fileName: string;
+    let downloadUrl: string;
+    try {
+      const result = selectPrimaryFile(versionData, versionId);
+      fileName = result.fileName;
+      downloadUrl = result.downloadUrl;
+    } catch (error) {
+      const message = error && typeof error === 'object' && 'message' in error
+        ? String(error.message)
+        : 'Failed to select primary file';
+      throw new UnrecoverableError(message);
+    }
+
+    // Determine destination path
+    const destinationPath = this.getDestinationPath(assetKind, fileName, directoryConfig);
+
+    // Download the file
+    await this.downloadToFile(
+      downloadUrl,
+      destinationPath,
+      { authorization: `Bearer ${civitaiConfig.apiToken}` },
+      (progress) => {
+        getDbApi().jobs.updateProgress(job.uuid, progress);
+      }
+    );
+
+    // Create asset record in database
+    const assetId = this.createAssetRecord(assetKind, versionData, sourceUrl, destinationPath);
+
+    // Save preview image (non-blocking)
+    await this.savePreviewImage(versionData, destinationPath);
+
+    // Save image metadata
+    this.saveImageMetadata(versionData, assetId);
+
+    // Refresh A1111 asset list
+    await this.refreshA1111Assets(assetKind);
+
+    // Return compact result object to store with the job
+    const { name } = extractAssetMetadata(versionData);
     return {
       asset_id: assetId,
-      kind: String(kind),
+      kind: assetKind,
       name,
-      local_path: destPath,
-      source_url: String(source_url),
+      local_path: destinationPath,
+      source_url: sourceUrl,
     };
   }
 }

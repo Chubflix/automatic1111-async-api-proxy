@@ -224,7 +224,7 @@ function initDb() {
           rows = db.prepare('SELECT * FROM assets ORDER BY datetime(created_at) DESC, id DESC').all();
         }
         return rows.map((r) => {
-          const imagesRows = statments.listAssetImagesStmt.all(r.id);
+          const imagesRows = statements.listAssetImagesStmt.all(r.id);
           const images = imagesRows.map((row) => ({
             url: row.url,
             is_nsfw: !!row.is_nsfw,

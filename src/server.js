@@ -219,7 +219,7 @@ api.post('/v1/assets/download', (req, res) => {
     const id = uuidv4();
     const job = {
         uuid: id,
-        status: 'queued',
+        status: 'pending',
         workflow: isCivitaiUrl(normalizedUrl) ? 'civitai-download' : 'asset-download',
         progress: 0,
         request: {
