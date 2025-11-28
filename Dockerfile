@@ -31,7 +31,7 @@ RUN yarn install --production
 
 # Copy built artifact and runtime assets
 COPY migrations ./migrations
-COPY --from=builder /app/dist ./src
+COPY --from=builder /app/dist/src ./src
 COPY --from=builder /app/schemas ./schemas
 
 ENV NODE_ENV=production
