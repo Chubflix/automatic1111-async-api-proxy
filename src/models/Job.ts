@@ -3,7 +3,7 @@ type Job = {
     status: string,
     progress: number,
     request: string,
-    result?: string,
+    result?: object,
     error?: string,
     webhookUrl?: string,
     webhookKey?: string,
