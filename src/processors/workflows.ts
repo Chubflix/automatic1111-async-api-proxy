@@ -22,16 +22,25 @@ const imageGeneration: Workflow = {
     }
 };
 
+const noopWorkflow: Workflow = {
+  'pending': {
+    process: 'noop',
+    success: 'completed',
+    failure: 'completed',
+  }
+}
+
 const workflows: Record<string, Workflow> =  {
     'txt2img': imageGeneration,
     'img2img': imageGeneration,
-    'florence': {
-        'pending': {
-            process: 'noop',
-            success: 'completed',
-            failure: 'completed',
-        }
-    }
+    'civitai-download': {
+      'pending': {
+        process: 'civitai-download',
+        success: 'completed'
+      }
+    },
+    'asset-download': noopWorkflow,
+    'florence': noopWorkflow
 };
 
 module.exports = workflows;
