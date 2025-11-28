@@ -1,3 +1,6 @@
+import {Job} from "../models/Job";
+import ProcessorInterface from "./processorInterface";
+
 const createLogger = require('../libs/logger');
 const log = createLogger('proc:generate');
 
@@ -10,4 +13,4 @@ class ImageGenerationProcessor implements ProcessorInterface {
   }
 }
 
-module.exports = ImageGenerationProcessor;
+export default ImageGenerationProcessor;

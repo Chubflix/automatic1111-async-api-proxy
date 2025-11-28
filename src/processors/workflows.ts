@@ -25,6 +25,13 @@ const imageGeneration: Workflow = {
 const workflows: Record<string, Workflow> =  {
     'img2txt': imageGeneration,
     'img2img': imageGeneration,
+    'florence': {
+        'pending': {
+            process: 'noop',
+            success: 'completed',
+            failure: 'completed',
+        }
+    }
 };
 
 module.exports = workflows;
