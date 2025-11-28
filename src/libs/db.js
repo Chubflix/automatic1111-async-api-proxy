@@ -1,0 +1,251 @@
+const fs = require('fs');
+const path = require('path');
+const Database = require('better-sqlite3');
+const {deserialize} = require("./json");
+
+const DB_PATH = path.join(process.cwd(), process.env.DB_PATH || 'db.sqlite');
+
+// Ensure directory exists
+const dir = path.dirname(DB_PATH);
+if (!fs.existsSync(dir)) {
+  try {
+    fs.mkdirSync(dir, {recursive: true});
+  } catch (e) {
+    console.warn('Could not create DB directory:', dir, e.message);
+  }
+}
+
+let rawDb = null;
+let dbApi = null;
+
+function getDb() {
+  if (!rawDb) {
+    rawDb = new Database(DB_PATH);
+    rawDb.pragma('journal_mode = WAL');
+    rawDb.pragma('synchronous = NORMAL');
+  }
+  return rawDb;
+}
+
+function initDb() {
+  if (dbApi) return dbApi;
+
+  const db = getDb();
+
+  // Prepare all statements
+  const statements = {
+    insertJob: db.prepare(`
+      INSERT INTO jobs (uuid, status, progress, request, result, error, webhookUrl, webhookKey, created_at, workflow)
+      VALUES (@uuid, @status, @progress, @request, @result, @error, @webhookUrl, @webhookKey, @created_at, @workflow)
+    `),
+    getJob: db.prepare(`SELECT uuid,
+                               status,
+                               progress,
+                               request,
+                               result,
+                               error,
+                               webhookUrl,
+                               webhookKey,
+                               created_at,
+                               workflow,
+                               retry_count,
+                               last_retry,
+                               ready,
+                               ready_at
+                        FROM jobs
+                        WHERE uuid = ?`),
+    updateStatus: db.prepare(`UPDATE jobs
+                              SET status = ?
+                              WHERE uuid = ?`),
+    updateProgress: db.prepare(`UPDATE jobs
+                                SET progress = ?
+                                WHERE uuid = ?`),
+    updateRetry: db.prepare(`UPDATE jobs
+                             SET retry_count = retry_count + 1,
+                                 last_retry  = ?
+                             WHERE uuid = ?`),
+    // Select next ready job, oldest first by created_at
+    getNextReady: db.prepare(`
+      SELECT uuid,
+             status,
+             progress,
+             request,
+             result,
+             error,
+             webhookUrl,
+             webhookKey,
+             created_at,
+             workflow,
+             retry_count,
+             last_retry,
+             ready,
+             ready_at
+      FROM jobs
+      WHERE (ready = 1) AND ready_at <= datetime('now')
+      ORDER BY datetime(created_at)
+      LIMIT 1
+    `),
+    getActive: db.prepare(`
+      SELECT uuid,
+             status,
+             progress,
+             request,
+             workflow,
+             retry_count,
+             ready,
+             ready_at,
+             last_retry,
+             created_at
+      FROM jobs
+      WHERE status NOT IN ('completed', 'error')
+      ORDER BY rowid DESC
+    `),
+    listAssetImagesStmt: db.prepare(`
+      SELECT asset_id, url, is_nsfw, width, height, meta FROM assets_images
+      WHERE asset_id = ?
+      ORDER BY id
+    `)
+  };
+
+  dbApi = {
+    jobs: {
+      // list() returns array
+      // get(uuid) returns null if not found, not undefined
+      create(job) {
+        const row = {
+          uuid: job.uuid,
+          status: job.status || 'pending',
+          workflow: job.workflow || null,
+          progress: Number(job.progress || 0),
+          request: JSON.stringify(job.request || {}),
+          result: job.result == null ? null : JSON.stringify(job.result),
+          error: job.error ?? null,
+          webhookUrl: job.webhookUrl ?? null,
+          webhookKey: job.webhookKey ?? null,
+          created_at: job.created_at || new Date().toISOString(),
+        };
+        statements.insertJob.run(row);
+        return job.uuid;
+      },
+      get(uuid) {
+        const row = statements.getJob.get(uuid);
+        if (!row) return null;
+        return {
+          ...row,
+          request: deserialize(row.request),
+          result: deserialize(row.result),
+        };
+      },
+      update(uuid, data) {
+        const allowed = ['status', 'progress', 'request', 'result', 'error', 'webhookUrl', 'webhookKey', 'workflow', 'retry_count', 'last_retry'];
+        const fields = Object.keys(data || {}).filter(k => allowed.includes(k));
+        if (fields.length === 0) return 0;
+        const sets = fields.map(k => `${k} = @${k}`);
+        const payload = {...data};
+        if ('request' in payload) payload.request = JSON.stringify(payload.request);
+        if ('result' in payload && payload.result != null) payload.result = JSON.stringify(payload.result);
+        const stmt = db.prepare(`UPDATE jobs
+                                 SET ${sets.join(', ')}
+                                 WHERE uuid = @uuid`);
+        return stmt.run({uuid, ...payload}).changes;
+      },
+      updateStatus(uuid, status) {
+        return statements.updateStatus.run(status, uuid).changes;
+      },
+      updateProgress(uuid, progress) {
+        return statements.updateProgress.run(progress, uuid).changes;
+      },
+      cancel(uuid) {
+        const job = db.prepare(`SELECT * FROM jobs WHERE uuid = ? AND status NOT IN ('completed', 'error') LIMIT 1`).get(uuid);
+        if (!job) return false;
+
+        this.updateStatus(uuid, 'canceled');
+        return true;
+      },
+      getNextReady() {
+        const row = statements.getNextReady.get();
+        if (!row) throw new Error('No ready jobs');
+        return {
+          ...row,
+            request: deserialize(row.request),
+            result: deserialize(row.result),
+        };
+      },
+      listActive() {
+        const rows = statements.getActive.all();
+        return rows.map(r => ({
+          uuid: r.uuid,
+          status: r.status,
+          progress: Number(r.progress || 0),
+          retry_count: r.retry_count,
+          ready: r.ready,
+          ready_at: r.ready_at,
+          last_retry: r.last_retry,
+          created_at: r.created_at,
+        }));
+      },
+      recentErrors(limit = 20) {
+        const n = Math.max(1, Math.min(100, Number(limit) || 20));
+        const rows = db
+          .prepare(
+            "SELECT uuid, error FROM jobs WHERE status = 'error' ORDER BY rowid DESC LIMIT ?"
+          )
+          .all(n);
+        return rows.map((r) => ({ uuid: r.uuid, error: r.error || null }));
+      },
+      incrementFailureCounter(jobUuid) {
+        const now = new Date().toISOString();
+        statements.updateRetry.run(now, jobUuid);
+      },
+
+      // getNextReady() - the next jobs where ready = 1 ordered by created_at (oldest first)
+    },
+    assets: {
+      // list
+      get(id) {
+        const r = db.prepare('SELECT * FROM assets WHERE id = ?').get(id);
+        if (!r) return null;
+        const imagesRows = statements.listAssetImagesStmt.all(id);
+        const images = imagesRows.map((row) => ({
+          url: row.url,
+          is_nsfw: !!row.is_nsfw,
+          width: row.width == null ? null : Number(row.width),
+          height: row.height == null ? null : Number(row.height),
+          meta: deserialize(row.meta, null),
+        }));
+        return {
+          id: r.id,
+          kind: r.kind,
+          name: r.name ?? null,
+          source_url: r.source_url,
+          example_prompt: r.example_prompt ?? null,
+          min: Number(r.min),
+          max: Number(r.max),
+          local_path: r.local_path ?? null,
+          created_at: r.created_at,
+          updated_at: r.updated_at,
+          images,
+        };
+      },
+      // create
+      // update
+      // addImage(uuid, image)
+      // ...
+    },
+  };
+
+  return dbApi;
+}
+
+function getDbApi() {
+  if (!dbApi) {
+    throw new Error('DB not initialized. Call initDb() first.');
+  }
+  return dbApi;
+}
+
+module.exports = {
+  getDb,
+  initDb,
+  getDbApi,
+};

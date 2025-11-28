@@ -12,3 +12,4 @@ Dockerfile
 data/
 deploy/
 scripts/
+/dist/
