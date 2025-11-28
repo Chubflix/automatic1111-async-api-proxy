@@ -3,9 +3,22 @@ import {Job} from "../models/Job";
 
 class WebhookProcessor implements ProcessorInterface {
   async run(job: Job) {
-    // send webhook to a1111 with payload from job
-    // return empty payload
-    return {}
+    if (!job.webhookUrl) return job.result || {};
+    try {
+      const headers: Record<string, string> = { 'content-type': 'application/json' };
+      if (job.webhookKey) headers['x-webhook-key'] = job.webhookKey as string;
+      const payload = {
+        uuid: job.uuid,
+        job_status: 'completed',
+        progress: 1,
+        images: (job.result && (job.result as any).images) || [],
+        info: (job.result && (job.result as any).info) || null,
+      };
+      await fetch(job.webhookUrl as string, { method: 'POST', headers, body: JSON.stringify(payload) });
+    } catch (_e) {
+      // ignore webhook delivery failures for now
+    }
+    return job.result || {};
   }
 }
 

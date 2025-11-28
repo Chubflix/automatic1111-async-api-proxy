@@ -23,7 +23,7 @@ const imageGeneration: Workflow = {
 };
 
 const workflows: Record<string, Workflow> =  {
-    'img2txt': imageGeneration,
+    'txt2img': imageGeneration,
     'img2img': imageGeneration,
     'florence': {
         'pending': {

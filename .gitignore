@@ -1,6 +1,7 @@
 .idea/
 .env
 .env.local
+dist/
 
 # Node
 node_modules/
