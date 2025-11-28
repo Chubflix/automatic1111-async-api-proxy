@@ -1,14 +1,12 @@
-const ImageGenerationProcessor = require('./imageGeneration');
-const UploadProcessor = require('./uploading');
-
 class ProcessorFactory {
-  static createProcessor(activeState) {
+  static createProcessor(activeState: string): ProcessorInterface {
     switch (activeState) {
       case 'generating':
         return new ImageGenerationProcessor();
       case 'uploading':
         return new UploadProcessor();
-      // Future processors: tagging, downloading-lora, sending-webhook
+      case 'webhook':
+        return new WebhookProcessor();
       default:
         throw new Error(`Unknown active state: ${activeState}`);
     }
