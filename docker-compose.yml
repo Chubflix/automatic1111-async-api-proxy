@@ -17,6 +17,8 @@ services:
     volumes:
       - ./data:/data
     restart: unless-stopped
+    labels:
+      io.containers.autoupdate: "registry"
 
   worker:
     container_name: automatic-async-proxy-worker
@@ -33,3 +35,6 @@ services:
       - ./data:/data
     command: ["yarn", "worker"]
     restart: unless-stopped
+    labels:
+      io.containers.autoupdate: "registry"
+
