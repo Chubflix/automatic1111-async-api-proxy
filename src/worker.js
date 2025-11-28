@@ -41,7 +41,7 @@ async function processNextJob(job) {
     const failureState = workflowStep.failure || originalWaitingState;
 
     if (workflowStep.incrementFailureCounter !== false) {
-      db.incrementFailureCounter(job.uuid);
+      db.jobs.incrementFailureCounter(job.uuid);
     }
 
     db.jobs.updateStatus(job.uuid, failureState);

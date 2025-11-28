@@ -80,7 +80,8 @@ app.get('/', (_req, res) => res.redirect('/doc'));
 
 app.get('/public/jobs.json', (_req, res) => {
     try {
-        const jobs = db.listActiveJobs();
+        // TODO: map structure to spec
+        const jobs = db.jobs.listActive();
         res.status(200).json({jobs, updatedAt: new Date().toISOString()});
     } catch (e) {
         log.error('Failed to list active jobs:', e && e.message ? e.message : e);
@@ -90,7 +91,7 @@ app.get('/public/jobs.json', (_req, res) => {
 
 app.get('/public/failed-jobs.json', (_req, res) => {
     try {
-        const jobs = db.listLastFailedJobs(20);
+        const jobs = db.jobs.recentErrors(20);
         res.status(200).json({jobs, updatedAt: new Date().toISOString()});
     } catch (e) {
         log.error('Failed to list failed jobs:', e && e.message ? e.message : e);
@@ -150,7 +151,7 @@ api.post('/v1/txt2img', (req, res) => {
         webhookUrl,
         webhookKey,
     };
-    db.createJob(job);
+    db.jobs.create(job);
     return res.status(202).json({uuid: id});
 });
 
@@ -168,7 +169,7 @@ api.post('/v1/img2img', (req, res) => {
         webhookUrl,
         webhookKey,
     };
-    db.createJob(job);
+    db.jobs.create(job);
     return res.status(202).json({uuid: id});
 });
 
@@ -195,7 +196,7 @@ api.post('/v1/florence', (req, res) => {
         webhookUrl,
         webhookKey,
     };
-    db.createJob(job);
+    db.jobs.create(job);
     return res.status(202).json({uuid: id});
 });
 
@@ -231,13 +232,13 @@ api.post('/v1/assets/download', (req, res) => {
         webhookUrl: null,
         webhookKey: null,
     };
-    db.createJob(job);
+    db.jobs.create(job);
     // Return the job uuid; further metadata (name, image_url, min/max, etc.) can be set via future edits/endpoints.
     return res.status(202).json({uuid: id});
 });
 
 api.get('/v1/assets/:id', (req, res) => {
-    const asset = db.getAsset(req.params.id);
+    const asset = db.assets.get(req.params.id);
     if (!asset) return res.status(404).json({error: 'Not found'});
     // Spec change: AssetsResponse no longer includes status or error
     const {status, error, ...rest} = asset || {};
@@ -249,26 +250,16 @@ api.get('/v1/assets', (req, res) => {
     if (kind && kind !== 'model' && kind !== 'lora') {
         return res.status(400).json({error: "kind must be 'model' or 'lora'"});
     }
-    const list = db.listAssets(kind || undefined);
+    const list = db.assets.list(kind || undefined);
     return res.json(list);
 });
 
 api.get('/v1/jobs', (_req, res) => {
-    function inferType(request) {
-        const req = request || {};
-        const explicit = String(req.type || '').toLowerCase();
-        if (explicit === 'asset-download') return 'user-download';
-        if (explicit === 'florence') return 'florence';
-        // If init_images (non-empty) present, treat as img2img; otherwise txt2img
-        if (Array.isArray(req.init_images) && req.init_images.length > 0) return 'img2img';
-        return 'txt2img';
-    }
-
-    const list = db.listActiveJobsDetailed().map((r) => ({
+    const list = db.jobs.listActive().map((r) => ({
         uuid: r.uuid,
         job_status: r.status,
         progress: r.progress,
-        type: inferType(r.request),
+        type: r.workflow,
         created_at: r.created_at || null,
     }));
     return res.json(list);
@@ -276,12 +267,12 @@ api.get('/v1/jobs', (_req, res) => {
 
 api.get('/v1/errors', (req, res) => {
     const limit = req.query && req.query.limit ? Number(req.query.limit) : 50;
-    const items = db.listRecentErrors(limit);
+    const items = db.jobs.recentErrors(limit);
     return res.json(items);
 });
 
 api.get('/v1/jobs/:uuid', (req, res) => {
-    const job = db.getJob(req.params.uuid);
+    const job = db.jobs.get(req.params.uuid);
     if (!job) return res.status(404).json({error: 'Not found'});
     const images = job.result && Array.isArray(job.result.images) ? job.result.images : [];
     const info = (job.result && job.result.info) ? job.result.info : (job.error ?? null);
@@ -296,7 +287,7 @@ api.get('/v1/jobs/:uuid', (req, res) => {
 });
 
 api.delete('/v1/jobs/:uuid', (req, res) => {
-    const ok = db.cancelJob(req.params.uuid);
+    const ok = db.jobs.cancel(req.params.uuid);
     if (!ok) return res.status(404).end();
     return res.status(204).end();
 });

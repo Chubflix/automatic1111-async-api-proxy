@@ -52,11 +52,11 @@ GET {{baseUrl}}/sdapi/v1/errors?limit=100
 Authorization: Bearer {{token}}
 
 ### Get job details (uses {{jobId}})
-GET {{baseUrl}}/sdapi/v1/jobs/341116af-a114-42cd-8025-fd29880c88d3
+GET {{baseUrl}}/sdapi/v1/jobs/53113ac4-e801-4c31-8465-d88d2e72b5b9
 Authorization: Bearer {{token}}
 
 ### Cancel job (204 on success)
-DELETE {{baseUrl}}/sdapi/v1/jobs/2da73b4f-6ce5-429e-b4c2-e06b1a927d42
+DELETE {{baseUrl}}/sdapi/v1/jobs/53113ac4-e801-4c31-8465-d88d2e72b5b9
 Authorization: Bearer {{token}}
 
 ### Submit img2img job (demo; minimal body)

@@ -1,6 +1,6 @@
 // JSON serialization helpers
 const serialize = (val) => JSON.stringify(val == null ? null : val);
-const deserialize = (text, fallback) => {
+const deserialize = (text, fallback = null) => {
     if (text == null) return fallback;
     try {
         return JSON.parse(text);
