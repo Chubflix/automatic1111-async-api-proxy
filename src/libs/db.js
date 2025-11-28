@@ -81,7 +81,7 @@ function initDb() {
              ready,
              ready_at
       FROM jobs
-      WHERE (ready = 1) AND ready_at <= datetime('now')
+      WHERE (ready = 1) AND ready_at <= ?
       ORDER BY datetime(created_at)
       LIMIT 1
     `),
@@ -163,7 +163,7 @@ function initDb() {
         return true;
       },
       getNextReady() {
-        const row = statements.getNextReady.get();
+        const row = statements.getNextReady.get(new Date().toISOString());
         if (!row) throw new Error('No ready jobs');
         return {
           ...row,

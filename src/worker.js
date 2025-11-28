@@ -64,7 +64,6 @@ async function mainLoop() {
       const job = db.jobs.getNextReady();
       await processNextJob(job);
     } catch (e) {
-      log.error('Worker loop error:', e.message);
       await sleep(POLL_MS);
     }
   }
