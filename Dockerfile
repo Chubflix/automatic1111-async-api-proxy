@@ -33,6 +33,7 @@ RUN yarn install --production
 COPY migrations ./migrations
 COPY --from=builder /app/dist/src ./src
 COPY --from=builder /app/schemas ./schemas
+COPY src/static ./src/static
 
 ENV NODE_ENV=production
 ENV PORT=3000
