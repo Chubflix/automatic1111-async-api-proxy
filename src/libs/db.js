@@ -56,10 +56,10 @@ function initDb() {
                         FROM jobs
                         WHERE uuid = ?`),
     updateStatus: db.prepare(`UPDATE jobs
-                              SET status = ?,
-                                  completed_at = CASE WHEN ? IN ('completed', 'canceled', 'error') THEN datetime('now') ELSE completed_at END
-                                  progress = CASE WHEN ? IN ('progress', 'canceled', 'error') THEN 1 ELSE progress END
-                              WHERE uuid = ?`),
+                              SET status = @status,
+                                  completed_at = CASE WHEN @status IN ('completed', 'canceled', 'error') THEN datetime('now') ELSE completed_at END,
+                                  progress = CASE WHEN @status IN ('progress', 'canceled', 'error') THEN 1 ELSE progress END
+                              WHERE uuid = @uuid`),
     updateProgress: db.prepare(`UPDATE jobs
                                 SET progress = ?
                                 WHERE uuid = ?`),
@@ -190,7 +190,7 @@ function initDb() {
         });
       },
       updateStatus(uuid, status) {
-        return statements.updateStatus.run(status, status, uuid).changes;
+        return statements.updateStatus.run({status, uuid}).changes;
       },
       updateProgress(uuid, progress) {
         return statements.updateProgress.run(progress, uuid).changes;
