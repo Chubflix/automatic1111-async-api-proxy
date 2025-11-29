@@ -221,6 +221,7 @@ function initDb() {
         return rows.map(r => ({
           uuid: r.uuid,
           status: r.status,
+          workflow: r.workflow,
           progress: Number(r.progress || 0),
           retry_count: r.retry_count,
           ready: r.ready,

@@ -261,7 +261,6 @@ api.get('/v1/jobs', (_req, res) => {
         workflow: r.workflow,
         retry_count: r.retry_count,
         progress: r.progress,
-        type: r.workflow,
         created_at: r.created_at || null,
     }));
     return res.json(list);
