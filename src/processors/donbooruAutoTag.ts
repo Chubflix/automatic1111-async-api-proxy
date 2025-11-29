@@ -1,6 +1,7 @@
 import ProcessorInterface from "./processorInterface";
 import {Job} from "../models/Job";
 import createLogger from '../libs/logger';
+import {sleep} from '../libs/sleep';
 
 const log = createLogger('proc:donbooru-autotag');
 
@@ -10,6 +11,31 @@ interface AutoTagResponse {
 }
 
 class DonbooruAutoTagProcessor implements ProcessorInterface {
+  // Fetch with retry mechanism and timeout
+  async fetchWithRetry(url: string, options: RequestInit, maxRetries = 3, timeoutMs = 25_000): Promise<Response> {
+    let lastError: Error | null = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        return await fetch(url, {
+          ...options,
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+        log.warn(`Auto-tag API request failed (attempt ${attempt}/${maxRetries}): ${lastError.message}`);
+
+        // If this is not the last attempt, wait before retrying
+        if (attempt < maxRetries) {
+          await sleep(1000); // Wait 1 second between retries
+        }
+      }
+    }
+
+    // If we've exhausted all retries, throw the last error
+    throw lastError || new Error('All retry attempts failed');
+  }
+
   async run(job: Job) {
     const apiEndpoint = process.env.DONBOORU_AUTOTAG_ENDPOINT || 'https://booru.svc.cklio.com/evaluate';
 
@@ -39,11 +65,11 @@ class DonbooruAutoTagProcessor implements ProcessorInterface {
       formData.append('file', file);
       formData.append('format', 'json');
 
-      // Send request to auto-tag API
-      const response = await fetch(apiEndpoint, {
+      // Send request to auto-tag API with retry and timeout
+      const response = await this.fetchWithRetry(apiEndpoint, {
         method: 'POST',
         body: formData,
-      });
+      }, 3, 20_000);
 
       if (!response.ok) {
         throw new Error(`Auto-tag API failed: ${response.status} ${response.statusText}`);
