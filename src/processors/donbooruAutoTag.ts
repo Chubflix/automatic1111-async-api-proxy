@@ -11,7 +11,7 @@ interface AutoTagResponse {
 
 class DonbooruAutoTagProcessor implements ProcessorInterface {
   async run(job: Job) {
-    const apiEndpoint = process.env.DONBOORU_AUTOTAG_ENDPOINT || 'http://192.168.178.78:5000/evaluate';
+    const apiEndpoint = process.env.DONBOORU_AUTOTAG_ENDPOINT || 'https://booru.svc.cklio.com';
 
     // Get existing result data
     const existingResult = (job.result || {} as any);
