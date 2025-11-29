@@ -58,6 +58,7 @@ function initDb() {
     updateStatus: db.prepare(`UPDATE jobs
                               SET status = ?,
                                   completed_at = CASE WHEN ? IN ('completed', 'canceled', 'error') THEN datetime('now') ELSE completed_at END
+                                  progress = CASE WHEN ? IN ('progress', 'canceled', 'error') THEN 1 ELSE progress END
                               WHERE uuid = ?`),
     updateProgress: db.prepare(`UPDATE jobs
                                 SET progress = ?
@@ -164,6 +165,11 @@ function initDb() {
           if (!fields.includes('completed_at')) {
             fields.push('completed_at');
           }
+
+          payload.progress = 1;
+          if (!fields.includes('progress')) {
+            fields.push('progress');
+          }
         }
 
         if ('request' in payload) payload.request = serialize(payload.request);
@@ -174,6 +180,14 @@ function initDb() {
                                  SET ${sets.join(', ')}
                                  WHERE uuid = @uuid`);
         return stmt.run({uuid, ...payload}).changes;
+      },
+      error(uuid, errorMessage) {
+        return this.update(uuid, {
+          status: 'error',
+          error: errorMessage,
+          progress: 1,
+          completed_at: new Date().toISOString()
+        });
       },
       updateStatus(uuid, status) {
         return statements.updateStatus.run(status, status, uuid).changes;

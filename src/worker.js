@@ -39,10 +39,7 @@ async function processNextJob(job) {
     });
   } catch (error) {
     if (error.isUnrecoverable || job.retry_count >= 3) {
-      db.jobs.update(job.uuid, {
-        status: 'error',
-        error: error.message,
-      })
+      db.jobs.error(job.uuid, error.message);
       return;
     }
 
