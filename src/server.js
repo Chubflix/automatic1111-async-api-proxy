@@ -8,6 +8,7 @@ const {initDb, getDb} = require('./libs/db');
 const {runMigrations} = require('./libs/migration');
 const createLogger = require('./libs/logger');
 const fs = require("fs/promises");
+const workflows = require('./processors/workflows');
 const log = createLogger('server');
 let db = null;
 
@@ -322,6 +323,36 @@ api.get('/v1/loras', async (_req, res) => {
 
 api.get('/v1/loras/:loraId', (req, res) => {
     return res.status(404).json({error: 'LoRa not found'});
+});
+
+api.get('/v1/workflows', (_req, res) => {
+    const workflowsData = [];
+
+    // Transform the workflows object into the required format
+    for (const [workflowName, workflow] of Object.entries(workflows)) {
+        // Extract all steps from the workflow
+        const steps = ['pending'];
+        let currentStep = 'pending';
+
+        // Follow the workflow chain to collect all steps
+        while (workflow[currentStep]) {
+            steps.push(workflow[currentStep].process);
+            if (workflow[currentStep].success) {
+                steps.push(workflow[currentStep].success);
+                currentStep = workflow[currentStep].success;
+            } else {
+                break;
+            }
+        }
+
+        // Add the workflow to the response
+        workflowsData.push({
+            workflow: workflowName,
+            steps: [...new Set(steps)] // Remove duplicates
+        });
+    }
+
+    return res.json(workflowsData);
 });
 
 api.get('/v1/options', async (_req, res) => {
