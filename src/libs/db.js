@@ -102,8 +102,8 @@ function initDb() {
              created_at,
              completed_at
       FROM jobs
-      WHERE status NOT IN ('completed', 'error')
-        AND (ready_at <= ? OR ready_at IS NULL)
+      WHERE (status NOT IN ('completed', 'error') AND (ready_at <= ? OR ready_at IS NULL))
+         OR (status = 'completed' AND completed_at IS NOT NULL AND datetime(completed_at, '+5 minutes') >= datetime(?))
       ORDER BY rowid DESC
     `),
     listAssetImagesStmt: db.prepare(`
@@ -190,7 +190,8 @@ function initDb() {
         };
       },
       listActive() {
-        const rows = statements.getActive.all(new Date().toISOString());
+        const now = new Date().toISOString();
+        const rows = statements.getActive.all(now, now);
         return rows.map(r => ({
           uuid: r.uuid,
           status: r.status,
@@ -200,6 +201,7 @@ function initDb() {
           ready_at: r.ready_at,
           last_retry: r.last_retry,
           created_at: r.created_at,
+          completed_at: r.completed_at,
         }));
       },
       recentErrors(limit = 20) {
