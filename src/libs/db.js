@@ -35,8 +35,8 @@ function initDb() {
   // Prepare all statements
   const statements = {
     insertJob: db.prepare(`
-      INSERT INTO jobs (uuid, status, progress, request, result, error, webhookUrl, webhookKey, created_at, workflow)
-      VALUES (@uuid, @status, @progress, @request, @result, @error, @webhookUrl, @webhookKey, @created_at, @workflow)
+      INSERT INTO jobs (uuid, status, progress, request, result, error, webhookUrl, webhookKey, created_at, workflow, completed_at)
+      VALUES (@uuid, @status, @progress, @request, @result, @error, @webhookUrl, @webhookKey, @created_at, @workflow, @completed_at)
     `),
     getJob: db.prepare(`SELECT uuid,
                                status,
@@ -47,6 +47,7 @@ function initDb() {
                                webhookUrl,
                                webhookKey,
                                created_at,
+                               completed_at,
                                workflow,
                                retry_count,
                                last_retry,
@@ -55,7 +56,8 @@ function initDb() {
                         FROM jobs
                         WHERE uuid = ?`),
     updateStatus: db.prepare(`UPDATE jobs
-                              SET status = ?
+                              SET status = ?,
+                                  completed_at = CASE WHEN ? = 'completed' THEN datetime('now') ELSE completed_at END
                               WHERE uuid = ?`),
     updateProgress: db.prepare(`UPDATE jobs
                                 SET progress = ?
@@ -75,6 +77,7 @@ function initDb() {
              webhookUrl,
              webhookKey,
              created_at,
+             completed_at,
              workflow,
              retry_count,
              last_retry,
@@ -96,7 +99,8 @@ function initDb() {
              ready,
              ready_at,
              last_retry,
-             created_at
+             created_at,
+             completed_at
       FROM jobs
       WHERE status NOT IN ('completed', 'error')
         AND (ready_at <= ? OR ready_at IS NULL)
@@ -132,6 +136,7 @@ function initDb() {
           webhookUrl: job.webhookUrl ?? null,
           webhookKey: job.webhookKey ?? null,
           created_at: job.created_at || new Date().toISOString(),
+          completed_at: job.completed_at ?? null,
         };
         statements.insertJob.run(row);
         return job.uuid;
@@ -146,7 +151,7 @@ function initDb() {
         };
       },
       update(uuid, data) {
-        const allowed = ['status', 'progress', 'request', 'result', 'error', 'webhookUrl', 'webhookKey', 'workflow', 'retry_count', 'last_retry'];
+        const allowed = ['status', 'progress', 'request', 'result', 'error', 'webhookUrl', 'webhookKey', 'workflow', 'retry_count', 'last_retry', 'completed_at'];
         const fields = Object.keys(data || {}).filter(k => allowed.includes(k));
         if (fields.length === 0) return 0;
         const sets = fields.map(k => `${k} = @${k}`);
@@ -159,7 +164,7 @@ function initDb() {
         return stmt.run({uuid, ...payload}).changes;
       },
       updateStatus(uuid, status) {
-        return statements.updateStatus.run(status, uuid).changes;
+        return statements.updateStatus.run(status, status, uuid).changes;
       },
       updateProgress(uuid, progress) {
         return statements.updateProgress.run(progress, uuid).changes;
