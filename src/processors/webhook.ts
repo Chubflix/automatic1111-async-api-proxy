@@ -14,6 +14,7 @@ class WebhookProcessor implements ProcessorInterface {
         images: (job.result && (job.result as any).images) || [],
         seed: (job.result && (job.result as any).seed) || null,
         info: (job.result && (job.result as any).info) || null,
+        tags: (job.result && (job.result as any).tags) || null,
       };
       await fetch(job.webhookUrl as string, { method: 'POST', headers, body: JSON.stringify(payload) });
     } catch (_e) {
