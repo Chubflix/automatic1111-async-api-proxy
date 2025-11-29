@@ -57,7 +57,7 @@ function initDb() {
                         WHERE uuid = ?`),
     updateStatus: db.prepare(`UPDATE jobs
                               SET status = ?,
-                                  completed_at = CASE WHEN ? = 'completed' THEN datetime('now') ELSE completed_at END
+                                  completed_at = CASE WHEN ? IN ('completed', 'canceled', 'error') THEN datetime('now') ELSE completed_at END
                               WHERE uuid = ?`),
     updateProgress: db.prepare(`UPDATE jobs
                                 SET progress = ?
@@ -102,8 +102,8 @@ function initDb() {
              created_at,
              completed_at
       FROM jobs
-      WHERE (status NOT IN ('completed', 'error') AND (ready_at <= ? OR ready_at IS NULL))
-         OR (status = 'completed' AND completed_at IS NOT NULL AND datetime(completed_at, '+5 minutes') >= datetime(?))
+      WHERE (status NOT IN ('completed', 'error', 'canceled') AND (ready_at <= ? OR ready_at IS NULL))
+         OR (status IN ('completed', 'canceled') AND completed_at IS NOT NULL AND datetime(completed_at, '+5 minutes') >= datetime(?))
       ORDER BY rowid DESC
     `),
     listAssetImagesStmt: db.prepare(`
@@ -154,10 +154,22 @@ function initDb() {
         const allowed = ['status', 'progress', 'request', 'result', 'error', 'webhookUrl', 'webhookKey', 'workflow', 'retry_count', 'last_retry', 'completed_at'];
         const fields = Object.keys(data || {}).filter(k => allowed.includes(k));
         if (fields.length === 0) return 0;
-        const sets = fields.map(k => `${k} = @${k}`);
+
         const payload = {...data};
+
+        // If status is being updated to completed, canceled, or error, set completed_at to now
+        if (payload.status && ['completed', 'canceled', 'error'].includes(payload.status)) {
+          payload.completed_at = new Date().toISOString();
+          // Add completed_at to fields if it's not already there
+          if (!fields.includes('completed_at')) {
+            fields.push('completed_at');
+          }
+        }
+
         if ('request' in payload) payload.request = serialize(payload.request);
         if ('result' in payload && payload.result != null) payload.result = serialize(payload.result);
+
+        const sets = fields.map(k => `${k} = @${k}`);
         const stmt = db.prepare(`UPDATE jobs
                                  SET ${sets.join(', ')}
                                  WHERE uuid = @uuid`);
