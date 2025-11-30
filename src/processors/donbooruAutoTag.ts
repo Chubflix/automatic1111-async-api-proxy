@@ -41,6 +41,14 @@ class DonbooruAutoTagProcessor implements ProcessorInterface {
 
     // Get existing result data
     const existingResult = (job.result || {} as any);
+
+    // Early return if auto_tag is not enabled in meta
+    const req = job.request || {} as any;
+    if (!req.meta || req.meta.auto_tag !== true) {
+      log.debug('Skipping auto-tagging: auto_tag not enabled in meta', job.uuid);
+      return existingResult;
+    }
+
     const images = Array.isArray(existingResult.images) ? existingResult.images : [];
 
     if (images.length === 0) {
